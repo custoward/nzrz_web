@@ -126,7 +126,7 @@ function initAudio() {
   ac = new AC();
 
   bus = ac.createGain();
-  bus.gain.value = 0.9;
+  bus.gain.value = 0.45;
 
   // 때리는 순간의 쇳소리용 노이즈. 한 번 만들어 재사용한다.
   noise = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.25), ac.sampleRate);
@@ -217,7 +217,7 @@ function strike(freq, vel) {
     osc.frequency.value = freq * m[0] * detune;
 
     // 높은 모드일수록 세게 때려야 살아난다 — 세게 칠수록 밝아지는 이유
-    var peak = vel * m[1] * 0.16 * (0.45 + 0.55 * vel);
+    var peak = vel * m[1] * 0.20 * (0.35 + 0.65 * vel);
     var dur = m[2] * (0.85 + 0.3 * vel);
 
     g.gain.setValueAtTime(0.0001, t);
@@ -271,11 +271,15 @@ function chime(pairIndex, closingSpeed) {
   var now = ac.currentTime;
   chime.last = chime.last || [];
   if (now - (chime.last[pairIndex] || -9) < 0.09) return;   // 같은 쌍 연타 방지
-  if (closingSpeed < 12) return;                            // 살짝 스친 건 무시
+  if (closingSpeed < 5) return;                             // 거의 안 닿은 건 무시
 
   chime.last[pairIndex] = now;
   counts.chime++; report();
-  var vel = Math.min(closingSpeed / 220, 1);
+
+  // 살짝 스친 것과 세게 부딪힌 것의 차이가 들려야 한다.
+  // 선형으로 매핑하면 대부분 중간에 뭉치니 제곱을 씌워 폭을 벌린다.
+  var norm = Math.min(closingSpeed / 260, 1);
+  var vel = Math.pow(norm, 1.4);
 
   strike(TONE[pairIndex], vel);
   strike(TONE[pairIndex + 1], vel * 0.8);
@@ -431,33 +435,46 @@ stage.addEventListener('touchend', function () { lastX = null; });
 // 체중을 싣는다. 같은 원리로 두 항을 쓴다.
 var SHAKE_DRIVE = 240;   // 방향이 있는 직접 구동 — 기울이면 그쪽으로 쏠린다
 var SHAKE_PUMP = 300;    // 움직이던 방향으로 더 밀어 진폭을 키우는 항
-var grav = { x: 0 };
+var grav = { x: 0, y: 0, z: 0 };
+var lastMotionT = 0;
 
 function onMotion(e) {
   if (still) return;
   counts.motion++;
 
-  var a = e.acceleration;
-  var ax;
+  // acceleration은 중력이 빠진 값이라 그대로 쓴다. 비어 있는 기기에서는
+  // accelerationIncludingGravity에서 중력을 저역통과로 추정해 세 축 모두 빼낸다.
+  var pure = !!(e.acceleration && e.acceleration.x !== null);
+  var src = pure ? e.acceleration : e.accelerationIncludingGravity;
+  if (!src || src.x === null) return;
 
-  if (a && a.x !== null) {
-    ax = a.x;                                    // 중력이 이미 빠진 값
-  } else {
-    var g = e.accelerationIncludingGravity;
-    if (!g || g.x === null) return;
-    // 중력 성분을 저역통과로 추정해 빼낸다
-    grav.x = grav.x * 0.88 + g.x * 0.12;
-    ax = g.x - grav.x;
+  var ax = src.x || 0, ay = src.y || 0, az = src.z || 0;
+  if (!pure) {
+    grav.x = grav.x * 0.88 + ax * 0.12;
+    grav.y = grav.y * 0.88 + ay * 0.12;
+    grav.z = grav.z * 0.88 + az * 0.12;
+    ax -= grav.x; ay -= grav.y; az -= grav.z;
   }
 
-  var dt = (e.interval || 16) / 1000;
-  lastAccel = ax.toFixed(2);
-  if (counts.motion % 15 === 1) report();
-  var mag = Math.abs(ax);
-  if (mag < 0.4) return;                         // 손떨림 정도는 무시
+  // e.interval을 믿지 않는다. 기기마다 단위가 다르게 오는 경우가 있고,
+  // 그러면 dt가 통째로 어긋나 밀어주는 양이 사라진다. 직접 잰다.
+  var t = e.timeStamp || performance.now();
+  var dt = lastMotionT ? (t - lastMotionT) / 1000 : 0.016;
+  lastMotionT = t;
+  if (!(dt > 0.002 && dt < 0.2)) dt = 0.016;
 
-  var drive = Math.tanh(ax / 6);                 // 부호 있음
-  var pump = Math.tanh(mag / 6);                 // 크기만
+  // 흔드는 방향은 사람마다 다르다. 좌우만 보면 앞뒤로 흔드는 사람은
+  // 아무 반응도 못 얻는다. 세기는 세 축을 합쳐 재고, 기우는 방향만 x로 정한다.
+  var mag = Math.sqrt(ax * ax + ay * ay + az * az);
+
+  lastAccel = 'x ' + ax.toFixed(2) + ' / 합 ' + mag.toFixed(2) +
+              ' / dt ' + dt.toFixed(3) + (pure ? '' : ' (중력보정)');
+  if (counts.motion % 10 === 1) report();
+
+  if (mag < 0.25) return;                        // 손떨림 정도는 무시
+
+  var drive = Math.tanh(ax / 5);                 // 부호 있음 — 기우는 방향
+  var pump = Math.tanh(mag / 5);                 // 크기만 — 진폭을 키우는 힘
 
   PARTS.forEach(function (p) {
     p.v += drive * SHAKE_DRIVE * p.gain * dt;
