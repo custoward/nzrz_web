@@ -1,0 +1,43 @@
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+}
+
+#mark {
+  width: 180px;
+  max-width: 40vw;
+  height: auto;
+  overflow: visible;
+}
+
+/* 막대는 제 중심을 축으로 */
+#mark .bar {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+/* 다리 4개는 각자 위쪽 끝을 축으로 매달려 있다 */
+#mark .leg {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+}
+
+/* 다리 1은 위가 좁고 아래로 갈수록 넓어지는 모양이라
+   bbox 가로중앙(50%)이 실제 매달린 지점에서 43단위 벗어난다.
+   획 맨 윗부분의 중앙에 맞춰 축을 옮긴다. */
+#mark .leg-1 {
+  transform-origin: 17.5% 0%;
+}
+
+/* 커서가 지나가는 걸 감지하는 영역. 로고보다 넉넉해야
+   스쳐 지나가는 것만으로도 반응한다. */
+#stage {
+  padding: 90px 120px;
+}
