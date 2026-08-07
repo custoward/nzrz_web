@@ -3,527 +3,567 @@
 // 정해진 애니메이션을 재생하는 게 아니라 매 프레임 물리를 푼다:
 //   각가속도 = -ω₀²·θ  -  2ζω₀·θ'
 //              (복원력)     (감쇠)
-// 커서가 지나가면 지나간 방향·속도만큼 각속도(θ')를 더해준다.
-// 속도를 더하는 방식이라 힘이 누적된다 — 리듬 맞춰 왔다갔다 하면
-// 공명해서 점점 크게 흔들리고, 가만두면 스스로 잦아든다.
+// 마우스·손가락·기기 흔들림이 각속도(θ')를 밀어준다. 속도를 더하는
+// 방식이라 힘이 누적된다 — 리듬을 맞추면 공명해서 점점 크게 흔들리고,
+// 가만두면 스스로 잦아든다. 이웃한 획끼리 부딪히면 소리가 난다.
 
-var stage = document.getElementById('stage');
-var mark = document.getElementById('mark');
-var still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+(function () {
+  'use strict';
 
-// 각 획의 회전축 x좌표(viewBox 1024 기준)와 고유 진동수.
-// ω₀를 일부러 조금씩 어긋나게 뒀다. 넷이 같은 박자로 흔들리면
-// 기계처럼 보이는데, 어긋나 있으면 서로 위상이 밀리며 샤라랑거린다.
-// L = 회전축에서 아래끝까지 길이, oxL/oxR = 아랫부분 좌우 가장자리의 축 기준 오프셋.
-// 전부 logo.svg 패스에서 실측한 값이다. 충돌 판정에 쓴다.
-var PARTS = [
-  { sel: '.leg-1', tone: 0, x: 150.0, L: 373.4, oxL: -19.7, oxR: 111.1, w0: 6.1,  zeta: 0.055, gain: 1.00, max: 19 },
-  { sel: '.leg-2', tone: 1, x: 386.7, L: 368.1, oxL: -79.3, oxR:  90.6, w0: 7.3,  zeta: 0.050, gain: 0.90, max: 16 },
-  { sel: '.leg-3', tone: 2, x: 601.2, L: 368.6, oxL: -73.5, oxR:  72.9, w0: 6.7,  zeta: 0.052, gain: 0.95, max: 17 },
-  { sel: '.leg-4', tone: 3, x: 814.7, L: 366.1, oxL: -84.6, oxR:  86.3, w0: 7.9,  zeta: 0.048, gain: 0.85, max: 15 },
-  // 막대는 걸이라서 훨씬 뻣뻣하고 조금만 움직인다. 부딪히지 않는다.
-  { sel: '.bar',   x: 517.4, w0: 13.0, zeta: 0.140, gain: 0.16, max: 3 }
-];
+  // ══ 설정 ════════════════════════════════════════════════════
+  // 만질 만한 숫자는 전부 여기 모아둔다.
 
-var LEGS = PARTS.slice(0, 4);
-var RAD = Math.PI / 180;
-var REST = 0.55;   // 반발계수 — 부딪히면 이만큼 튕겨 나간다
+  var CFG = {
+    // 커서·손가락
+    sigma: 190,     // 커서 영향이 퍼지는 범위(viewBox 단위). 획 간격이 ~210이라
+                    // 이 정도면 옆 획도 약하게 딸려 흔들리며 물결이 생긴다.
+    ref: 2600,      // 기준 속도(viewBox단위/초). 화면상 약 460px/초 — 평범한 스윕.
+    drive: 0.36,    // 커서가 1단위 지나갈 때 밀어주는 각속도(도/초)
 
-var SIGMA = 190;   // 커서 영향이 퍼지는 범위(viewBox 단위). 다리 간격이 ~210이라
-                   // 이 정도면 옆 다리도 약하게 딸려 흔들리며 물결이 생긴다.
+    // 기기 흔들기
+    shakeDrive: 240,   // 방향이 있는 직접 구동 — 기울이면 그쪽으로 쏠린다
+    shakePump: 300,    // 움직이던 방향으로 더 밀어 진폭을 키우는 항
+    shakeFloor: 0.25,  // 이보다 약하면 손떨림으로 보고 무시(m/s²)
 
-var REF = 2600;    // 기준 속도(viewBox단위/초). 화면상 약 460px/초 — 평범한 스윕.
-var DRIVE = 0.36;  // 커서가 1단위 지나갈 때 밀어주는 각속도(도/초)
+    // 부딪힘
+    restitution: 0.55, // 부딪히면 이만큼 튕겨 나간다
 
-PARTS.forEach(function (p) {
-  p.el = mark.querySelector(p.sel);
-  p.a = 0;   // 각도(도)
-  p.v = 0;   // 각속도(도/초)
-});
+    // 소리
+    volume: 0.45,
+    tones: [587.33, 659.25, 783.99, 880.00],   // 장5음계 레·미·솔·라
+    hitFloor: 5,       // 이보다 약한 충돌은 무시
+    hitFull: 260,      // 이 속도에서 최대 음량
 
-var lastX = null, lastT = 0, running = false;
+    // 저절로 부는 바람
+    breezeMin: 4500,   // 다음 바람까지 대기(ms)
+    breezeMax: 11000
+  };
 
-// ── 소리 ─────────────────────────────────────────────────────
-// 음원 파일 없이 Web Audio로 합성한다. 획마다 음 하나씩, 5음계.
-// 브라우저 자동재생 정책 때문에 사용자가 한 번 클릭해야 열린다.
+  // 풍경은 종이 아니라 양끝이 자유로운 금속 관이다. 관의 진동 모드는
+  // 정수배가 아니라 1 : 2.756 : 5.404 : 8.933 로 벌어져 있다.
+  // 이 비율이 "음정 같으면서도 음정 아닌" 금속 울림의 정체다.
+  // 다만 높은 모드를 다 살리면 쨍그랑거려 탁해지므로 위쪽은 확 줄였다.
+  var MODES = [
+    // [배수,   세기,  지속(초)]
+    [ 1.000,   1.00,  7.0 ],
+    [ 2.756,   0.34,  2.4 ],
+    [ 5.404,   0.10,  0.9 ],
+    [ 8.933,   0.03,  0.35]
+  ];
 
-// 장5음계 4음(레·미·솔·라). 왼쪽부터 낮은 음.
-// 한 옥타브 올렸다 — 낮으면 웅웅거리고 높아야 청아하게 들린다.
-var TONE = [587.33, 659.25, 783.99, 880.00];
+  // 각 획의 회전축 x좌표와 고유 진동수.
+  // ω₀를 일부러 조금씩 어긋나게 뒀다. 넷이 같은 박자로 흔들리면
+  // 기계처럼 보이는데, 어긋나 있으면 위상이 밀리며 샤라랑거린다.
+  // L = 회전축에서 아래끝까지 길이, oxL/oxR = 아랫부분 좌우 가장자리의
+  // 축 기준 오프셋. 전부 logo.svg 패스에서 실측했고 충돌 판정에 쓴다.
+  var PARTS = [
+    { sel: '.leg-1', tone: 0, x: 150.0, L: 373.4, oxL: -19.7, oxR: 111.1, w0: 6.1,  zeta: 0.055, gain: 1.00, max: 19 },
+    { sel: '.leg-2', tone: 1, x: 386.7, L: 368.1, oxL: -79.3, oxR:  90.6, w0: 7.3,  zeta: 0.050, gain: 0.90, max: 16 },
+    { sel: '.leg-3', tone: 2, x: 601.2, L: 368.6, oxL: -73.5, oxR:  72.9, w0: 6.7,  zeta: 0.052, gain: 0.95, max: 17 },
+    { sel: '.leg-4', tone: 3, x: 814.7, L: 366.1, oxL: -84.6, oxR:  86.3, w0: 7.9,  zeta: 0.048, gain: 0.85, max: 15 },
+    // 막대는 걸이라서 훨씬 뻣뻣하고 조금만 움직인다. 부딪히지 않는다.
+    { sel: '.bar',            x: 517.4, w0: 13.0, zeta: 0.140, gain: 0.16, max: 3 }
+  ];
 
-// 풍경은 종이 아니라 양끝이 자유로운 금속 관이다. 관의 진동 모드는
-// 정수배가 아니라 1 : 2.756 : 5.404 : 8.933 로 벌어져 있다.
-// 이 비율이 "음정 같으면서도 음정 아닌" 금속 울림의 정체다.
-// 다만 높은 모드를 다 살리면 쨍그랑거려서 탁해진다. 기음을 길게 남기고
-// 위쪽은 확 줄여서 처음만 반짝이고 곧 맑은 기음만 남게 했다.
-var MODES = [
-  // [배수,   세기,  지속(초)]
-  [ 1.000,   1.00,  7.0 ],
-  [ 2.756,   0.34,  2.4 ],
-  [ 5.404,   0.10,  0.9 ],
-  [ 8.933,   0.03,  0.35]
-];
+  var RAD = Math.PI / 180;
 
-var ac = null, bus = null, noise = null;
+  // ══ 요소 ════════════════════════════════════════════════════
 
-// ── 진단 ─────────────────────────────────────────────────────
-// 주소 뒤에 ?debug 를 붙였을 때만 뜬다. 모바일은 콘솔을 볼 수 없어서
-// 화면에 직접 상태를 찍어야 뭐가 막혔는지 알 수 있다.
-
-var DEBUG = location.search.indexOf('debug') >= 0;
-var dbg = null;
-var counts = { touch: 0, motion: 0, brush: 0, chime: 0 };
-var lastAccel = '-';
-var audioNote = '-';
-
-if (DEBUG) {
-  dbg = document.createElement('pre');
-  dbg.id = 'debug';
-  document.body.appendChild(dbg);
-}
-
-function report() {
-  if (!dbg) return;
-  dbg.textContent = [
-    'secure(HTTPS)  : ' + window.isSecureContext,
-    'AudioContext   : ' + (ac ? ac.state : '아직 안 만듦'),
-    '무음우회       : ' + audioNote,
-    'DeviceMotion   : ' + (window.DeviceMotionEvent ? '있음' : '없음'),
-    'requestPerm    : ' + (window.DeviceMotionEvent &&
-                           typeof DeviceMotionEvent.requestPermission === 'function'
-                           ? '필요(iOS)' : '불필요(안드로이드)'),
-    'motion 상태    : ' + motionState,
-    '',
-    'touchmove      : ' + counts.touch,
-    'devicemotion   : ' + counts.motion,
-    '가속도 x       : ' + lastAccel,
-    '',
-    '스침소리       : ' + counts.brush,
-    '부딪힘소리     : ' + counts.chime,
-    'UA             : ' + navigator.userAgent.slice(0, 60)
-  ].join('\n');
-}
-
-// 잔향(여음). 노이즈를 지수적으로 감쇠시켜 임펄스응답을 즉석에서 만든다.
-function makeReverb(ctx, seconds, decay) {
-  var n = Math.floor(ctx.sampleRate * seconds);
-  var buf = ctx.createBuffer(2, n, ctx.sampleRate);
-  for (var c = 0; c < 2; c++) {
-    var ch = buf.getChannelData(c);
-    for (var i = 0; i < n; i++) {
-      ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, decay);
-    }
-  }
-  var conv = ctx.createConvolver();
-  conv.buffer = buf;
-  return conv;
-}
-
-function initAudio() {
-  if (ac) return;
-  var AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return;
-  ac = new AC();
-
-  bus = ac.createGain();
-  bus.gain.value = 0.45;
-
-  // 때리는 순간의 쇳소리용 노이즈. 한 번 만들어 재사용한다.
-  noise = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.25), ac.sampleRate);
-  var nd = noise.getChannelData(0);
-  for (var i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-
-  var wet = ac.createGain();
-  wet.gain.value = 0.6;
-  var verb = makeReverb(ac, 4.0, 2.2);
-
-  bus.connect(ac.destination);   // 직접음
-  bus.connect(verb);             // 잔향
-  verb.connect(wet);
-  wet.connect(ac.destination);
-
-  console.log('소리가 켜졌습니다. 마크 위로 마우스를 지나가 보세요.');
-}
-
-// ── 아이폰 무음 스위치 우회 ──────────────────────────────────
-// iOS는 오디오 세션이 기본 'ambient'라 Web Audio가 무음 스위치에 죽는다.
-// (HTML5 <audio> 태그는 안 죽는다 — WebKit의 알려진 동작)
-// 무음 파일을 <audio>로 한 번 재생시키면 세션이 'playback'으로 바뀌어
-// AudioContext도 같이 살아난다. 널리 쓰이는 우회법이다.
-var silent = null;
-
-function unmuteIOS() {
-  if (silent) return;
-  silent = document.createElement('audio');
-  silent.setAttribute('playsinline', '');
-  silent.loop = true;
-  silent.volume = 0.02;
-  silent.src = 'data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
-  var pr = silent.play();
-  if (pr && pr.catch) {
-    pr.then(function () {
-      audioNote = '무음우회 성공';
-      report();
-    }).catch(function (err) {
-      audioNote = '무음우회 실패: ' + (err && err.name ? err.name : err);
-      silent = null;
-      report();
-    });
-  }
-}
-
-// 클릭/터치에 오디오와 모션 센서를 연다.
-// 둘 다 사용자 제스처 안에서만 열 수 있다 — 자동재생 정책과 iOS 권한 정책.
-//
-// once로 한 번만 시도하면, 그 한 번이 실패했을 때 영영 복구가 안 된다.
-// (모바일에서 resume()이 비동기라 첫 제스처 안에 안 끝나는 경우가 흔하다)
-// 그래서 제스처가 올 때마다 아직 안 열린 것만 다시 시도한다.
-function unlock() {
-  unmuteIOS();
-  initAudio();
-  if (ac && ac.state !== 'running' && ac.resume) {
-    ac.resume().then(report).catch(report);
-  }
-  enableMotion();
-  report();
-}
-
-['pointerdown', 'touchstart', 'click'].forEach(function (ev) {
-  window.addEventListener(ev, unlock);
-});
-
-var enterShown = false;
-
-function showEnter() {
-  if (enterShown) return;
-  enterShown = true;
-  var el = document.getElementById('enter');
-  if (el) el.classList.add('on');
-}
-
-function strike(freq, vel) {
-  showEnter();          // 소리가 처음 난 순간에 버튼이 드러난다
-  var t = ac.currentTime;
-  var out = ac.createGain();
-  out.gain.value = 0.42;
-
-  // 실제 관은 때릴 때마다 미세하게 다르게 운다
-  var detune = 1 + (Math.random() - 0.5) * 0.006;
-
-  MODES.forEach(function (m) {
-    var osc = ac.createOscillator();
-    var g = ac.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = freq * m[0] * detune;
-
-    // 높은 모드일수록 세게 때려야 살아난다 — 세게 칠수록 밝아지는 이유
-    var peak = vel * m[1] * 0.20 * (0.35 + 0.65 * vel);
-    var dur = m[2] * (0.85 + 0.3 * vel);
-
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-
-    osc.connect(g);
-    g.connect(out);
-    osc.start(t);
-    osc.stop(t + dur + 0.05);
-  });
-
-  // 닿는 순간의 반짝임. 세게 깔면 쇳덩이 부딪는 소리가 되니 아주 얇게,
-  // 높은 대역만 스치듯 넣는다.
-  var src = ac.createBufferSource();
-  src.buffer = noise;
-  var bp = ac.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = freq * 9;
-  bp.Q.value = 0.7;
-  var ng = ac.createGain();
-  ng.gain.setValueAtTime(vel * 0.03, t);
-  ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.028);
-
-  src.connect(bp); bp.connect(ng); ng.connect(out);
-  src.start(t);
-  src.stop(t + 0.06);
-
-  out.connect(bus);
-}
-
-// 커서가 획을 스치고 지나갈 때. 부딪히는 소리보다 훨씬 여리게 —
-// 손끝으로 건드린 정도지 때린 게 아니다.
-function brush(p, speed) {
-  if (!ac || ac.state !== 'running') return;
-  if (p.tone === undefined) return;              // 막대는 울지 않는다
-  if (speed < 0.06) return;                      // 기어가듯 지나가면 무음
-
-  var now = ac.currentTime;
-  if (now - (p.lastBrush || -9) < 0.12) return;
-
-  p.lastBrush = now;
-  counts.brush++; report();
-  strike(TONE[p.tone], Math.min(speed, 1) * 0.42);
-}
-
-// 이웃한 두 다리가 부딪혔을 때 둘 다 운다.
-function chime(pairIndex, closingSpeed) {
-  if (!ac || ac.state !== 'running') return;
-
-  var now = ac.currentTime;
-  chime.last = chime.last || [];
-  if (now - (chime.last[pairIndex] || -9) < 0.09) return;   // 같은 쌍 연타 방지
-  if (closingSpeed < 5) return;                             // 거의 안 닿은 건 무시
-
-  chime.last[pairIndex] = now;
-  counts.chime++; report();
-
-  // 살짝 스친 것과 세게 부딪힌 것의 차이가 들려야 한다.
-  // 선형으로 매핑하면 대부분 중간에 뭉치니 제곱을 씌워 폭을 벌린다.
-  var norm = Math.min(closingSpeed / 260, 1);
-  var vel = Math.pow(norm, 1.4);
-
-  strike(TONE[pairIndex], vel);
-  strike(TONE[pairIndex + 1], vel * 0.8);
-}
-
-function push(e) {
-  if (still) return;
-  var pt = e.touches ? e.touches[0] : e;
-  if (!pt) return;
-  var r = mark.getBoundingClientRect();
-  var ux = (pt.clientX - r.left) / r.width * 1024;   // 화면 → viewBox 좌표
-  var now = e.timeStamp;
-
-  if (lastX !== null) {
-    var dt = (now - lastT) / 1000;
-    if (dt > 0.001 && dt < 0.2) {
-      var dx = ux - lastX;                           // 이번에 지나간 거리
-      var vx = dx / dt;                              // viewBox단위/초
-
-      // 세기는 '얼마나 지나갔나'(dx)에 비례시킨다. 이벤트가 몇 개 오든
-      // 총합이 이동거리로 정해져서 마우스 성능에 안 휘둘린다.
-      // 거기에 속도 계수를 곱하되 tanh로 눌러서, 빠를수록 세지긴 하되
-      // 휙 그어도 위로 튀지 않게 한다.
-      var speed = Math.tanh(Math.abs(vx) / REF);
-
-      PARTS.forEach(function (p) {
-        var d = (ux - p.x) / SIGMA;
-        var falloff = Math.exp(-d * d);              // 가까울수록 세게
-        // 커서가 오른쪽으로 가면 획의 아래쪽도 오른쪽으로 —
-        // 회전축이 위에 있어서 부호가 반대다
-        p.v -= DRIVE * dx * p.gain * falloff * speed;
-
-        // 커서가 그 획을 '가로지르는 순간'에만 스치듯 울린다.
-        // 근처에 있는 내내 울리면 소리가 뭉개진다.
-        var side = ux > p.x ? 1 : -1;
-        if (p.side !== undefined && p.side !== side) brush(p, speed);
-        p.side = side;
-      });
-      start();
-    }
-  }
-  lastX = ux;
-  lastT = now;
-}
-
-function step(now) {
-  var dt = Math.min((now - step.prev || 16) / 1000, 0.05);
-  step.prev = now;
-
-  var moving = false;
-  // 큰 각속도에서도 발산하지 않게 잘게 쪼개 적분한다
-  var n = 4, h = dt / n;
-  PARTS.forEach(function (p) {
-    for (var i = 0; i < n; i++) {
-      p.v += (-p.w0 * p.w0 * p.a - 2 * p.zeta * p.w0 * p.v) * h;
-      p.a += p.v * h;
-    }
-    if (p.a > p.max)  { p.a = p.max;  p.v *= -0.4; }   // 끝까지 가면 튕긴다
-    if (p.a < -p.max) { p.a = -p.max; p.v *= -0.4; }
-  });
-
-  collide();
+  var stage = document.getElementById('stage');
+  var mark = document.getElementById('mark');
+  var still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var LEGS = PARTS.slice(0, 4);
 
   PARTS.forEach(function (p) {
-    if (Math.abs(p.a) > 0.015 || Math.abs(p.v) > 0.05) moving = true;
-    p.el.style.transform = 'rotate(' + p.a.toFixed(3) + 'deg)';
+    p.el = mark.querySelector(p.sel);
+    p.a = 0;   // 각도(도)
+    p.v = 0;   // 각속도(도/초)
   });
 
-  if (moving) {
-    requestAnimationFrame(step);
-  } else {
-    running = false;
-    PARTS.forEach(function (p) {
-      p.a = p.v = 0;
-      p.el.style.transform = '';
-    });
-  }
-}
+  function rand(a, b) { return a + Math.random() * (b - a); }
 
-// 이웃한 다리끼리 부딪히는지 본다. 풍경은 마우스가 닿아서가 아니라
-// 서로 부딪혀서 소리가 난다.
-function collide() {
-  for (var i = 0; i < LEGS.length - 1; i++) {
-    var a = LEGS[i], b = LEGS[i + 1];
-    var ra = a.a * RAD, rb = b.a * RAD;
+  // ══ 진단 ════════════════════════════════════════════════════
+  // ?debug 를 붙였을 때만 동작한다. 꺼져 있으면 D의 메서드가 전부
+  // 빈 함수라, 본 코드에는 호출 한 줄 외에 흔적이 남지 않는다.
 
-    // 회전한 뒤 마주보는 가장자리의 실제 x 위치
-    var edgeA = a.x + a.oxR * Math.cos(ra) - a.L * Math.sin(ra);
-    var edgeB = b.x + b.oxL * Math.cos(rb) - b.L * Math.sin(rb);
-    var gap = edgeB - edgeA;
-    if (gap >= 0) continue;                    // 아직 안 닿음
-
-    // 아래끝의 좌우 속도 (각속도가 +면 아래끝은 왼쪽으로 간다)
-    var va = -a.L * a.v * RAD;
-    var vb = -b.L * b.v * RAD;
-    var closing = va - vb;                     // +면 서로 다가오는 중
-
-    if (closing > 0) {
-      // 질량이 같다고 보고 반발계수 REST로 속도를 교환한다
-      var na = ((1 - REST) * va + (1 + REST) * vb) / 2;
-      var nb = ((1 + REST) * va + (1 - REST) * vb) / 2;
-      a.v = -na / (a.L * RAD);
-      b.v = -nb / (b.L * RAD);
-      chime(i, closing);
+  var D = (function () {
+    if (location.search.indexOf('debug') < 0) {
+      var noop = function () {};
+      return { on: false, hit: noop, set: noop, show: noop };
     }
 
-    // 겹친 만큼 서로 밀어내 붙어버리는 걸 막는다
-    var pen = -gap / 2;
-    a.a += pen / (a.L * RAD);
-    b.a -= pen / (b.L * RAD);
-  }
-}
+    var el = document.createElement('pre');
+    el.id = 'debug';
+    document.body.appendChild(el);
 
-function start() {
-  if (running) return;
-  running = true;
-  step.prev = 0;
-  requestAnimationFrame(step);
-}
+    var n = {}, kv = {};
 
-// 로고를 누르면 한 번 훅 흔들린다. 마우스가 없는 기기에서도 놀 수 있게.
-// 방향은 넷이 공유하고 세기만 제각각 — 한 줄기 바람이 스친 것처럼.
-function pluck() {
-  if (still) return;
-  var dir = Math.random() < 0.5 ? -1 : 1;
-  PARTS.forEach(function (p) {
-    p.v += dir * (55 + Math.random() * 65) * p.gain;
-  });
-  start();
-}
-
-stage.addEventListener('click', pluck);
-
-stage.addEventListener('mousemove', push);
-stage.addEventListener('mouseleave', function () { lastX = null; });
-
-// 모바일 — 손가락으로 쓸어도 같은 방식으로 동작한다
-stage.addEventListener('touchmove', function (e) {
-  e.preventDefault();          // 화면이 딸려 움직이는 걸 막는다
-  counts.touch++; if (counts.touch % 10 === 1) report();
-  push(e);
-}, { passive: false });
-stage.addEventListener('touchend', function () { lastX = null; });
-
-// ── 흔들기 ───────────────────────────────────────────────────
-// 폰을 흔들면 진짜 풍경처럼 흔들린다.
-// 기기가 오른쪽으로 가속하면 매달린 것은 관성으로 왼쪽에 남는다 —
-// 그래서 가속도 부호를 그대로 각속도에 더한다.
-
-// 손으로 흔드는 주파수(3~5Hz)는 다리의 고유 진동수(약 1Hz)보다 훨씬 빠르다.
-// 그래서 가속도를 그대로 토크로 넣으면 부호가 계속 뒤집히며 상쇄돼 거의 안 움직인다.
-// 실제로 그네를 탈 때도 그네 주파수에 맞춰 미는 게 아니라 '가는 방향으로'
-// 체중을 싣는다. 같은 원리로 두 항을 쓴다.
-var SHAKE_DRIVE = 240;   // 방향이 있는 직접 구동 — 기울이면 그쪽으로 쏠린다
-var SHAKE_PUMP = 300;    // 움직이던 방향으로 더 밀어 진폭을 키우는 항
-var grav = { x: 0, y: 0, z: 0 };
-var lastMotionT = 0;
-
-function onMotion(e) {
-  if (still) return;
-  counts.motion++;
-
-  // acceleration은 중력이 빠진 값이라 그대로 쓴다. 비어 있는 기기에서는
-  // accelerationIncludingGravity에서 중력을 저역통과로 추정해 세 축 모두 빼낸다.
-  var pure = !!(e.acceleration && e.acceleration.x !== null);
-  var src = pure ? e.acceleration : e.accelerationIncludingGravity;
-  if (!src || src.x === null) return;
-
-  var ax = src.x || 0, ay = src.y || 0, az = src.z || 0;
-  if (!pure) {
-    grav.x = grav.x * 0.88 + ax * 0.12;
-    grav.y = grav.y * 0.88 + ay * 0.12;
-    grav.z = grav.z * 0.88 + az * 0.12;
-    ax -= grav.x; ay -= grav.y; az -= grav.z;
-  }
-
-  // e.interval을 믿지 않는다. 기기마다 단위가 다르게 오는 경우가 있고,
-  // 그러면 dt가 통째로 어긋나 밀어주는 양이 사라진다. 직접 잰다.
-  var t = e.timeStamp || performance.now();
-  var dt = lastMotionT ? (t - lastMotionT) / 1000 : 0.016;
-  lastMotionT = t;
-  if (!(dt > 0.002 && dt < 0.2)) dt = 0.016;
-
-  // 흔드는 방향은 사람마다 다르다. 좌우만 보면 앞뒤로 흔드는 사람은
-  // 아무 반응도 못 얻는다. 세기는 세 축을 합쳐 재고, 기우는 방향만 x로 정한다.
-  var mag = Math.sqrt(ax * ax + ay * ay + az * az);
-
-  lastAccel = 'x ' + ax.toFixed(2) + ' / 합 ' + mag.toFixed(2) +
-              ' / dt ' + dt.toFixed(3) + (pure ? '' : ' (중력보정)');
-  if (counts.motion % 10 === 1) report();
-
-  if (mag < 0.25) return;                        // 손떨림 정도는 무시
-
-  var drive = Math.tanh(ax / 5);                 // 부호 있음 — 기우는 방향
-  var pump = Math.tanh(mag / 5);                 // 크기만 — 진폭을 키우는 힘
-
-  PARTS.forEach(function (p) {
-    p.v += drive * SHAKE_DRIVE * p.gain * dt;
-
-    // 이미 가고 있는 쪽으로 더 밀어준다. 흔드는 박자가 진자와 안 맞아도
-    // 에너지가 쌓여 진폭이 커진다. 최대각에 가까울수록 덜 밀어서
-    // 무한정 커지지는 않게 한다.
-    var room = 1 - Math.abs(p.a) / p.max;
-    if (room > 0) {
-      var dir = (p.v || drive) > 0 ? 1 : -1;
-      p.v += dir * pump * SHAKE_PUMP * p.gain * dt * room;
+    function show() {
+      el.textContent = [
+        'secure(HTTPS)  : ' + window.isSecureContext,
+        'AudioContext   : ' + (audio.ctx ? audio.ctx.state : '아직 안 만듦'),
+        '무음우회       : ' + (kv.unmute || '-'),
+        'DeviceMotion   : ' + (window.DeviceMotionEvent ? '있음' : '없음'),
+        'requestPerm    : ' + (window.DeviceMotionEvent &&
+                               typeof DeviceMotionEvent.requestPermission === 'function'
+                               ? '필요(iOS)' : '불필요(안드로이드)'),
+        'motion 상태    : ' + (kv.motion || 'idle'),
+        '',
+        'touchmove      : ' + (n.touch || 0),
+        'devicemotion   : ' + (n.motion || 0),
+        '가속도         : ' + (kv.accel || '-'),
+        '',
+        '스침소리       : ' + (n.brush || 0),
+        '부딪힘소리     : ' + (n.chime || 0),
+        'UA             : ' + navigator.userAgent.slice(0, 60)
+      ].join('\n');
     }
-  });
-  start();
-}
 
-var motionState = 'idle';
+    return {
+      on: true,
+      hit: function (k, every) {
+        n[k] = (n[k] || 0) + 1;
+        if (!every || n[k] % every === 1) show();
+      },
+      set: function (k, v) { kv[k] = v; show(); },
+      show: show
+    };
+  })();
 
-function enableMotion() {
-  if (motionState === 'on' || motionState === 'asking') return;
+  // ══ 소리 ════════════════════════════════════════════════════
+  // 음원 파일 없이 Web Audio로 합성한다. 획마다 음 하나씩.
 
-  if (!window.DeviceMotionEvent) {
-    motionState = '미지원';
-    return;
+  var audio = { ctx: null, bus: null, noise: null };
+
+  function ready() {
+    return !!audio.ctx && audio.ctx.state === 'running';
   }
 
-  // iOS 13+ 는 사용자 제스처 안에서 권한을 물어야 한다.
-  // 안드로이드 크롬에는 이 함수 자체가 없다 — 권한창이 안 뜨는 게 정상이다.
-  if (typeof DeviceMotionEvent.requestPermission === 'function') {
-    motionState = 'asking';
-    DeviceMotionEvent.requestPermission().then(function (state) {
-      if (state === 'granted') {
-        window.addEventListener('devicemotion', onMotion);
-        motionState = 'on';
-      } else {
-        motionState = '거부됨(' + state + ')';
+  // 잔향(여음). 노이즈를 지수적으로 감쇠시켜 임펄스응답을 즉석에서 만든다.
+  function makeReverb(ctx, seconds, decay) {
+    var n = Math.floor(ctx.sampleRate * seconds);
+    var buf = ctx.createBuffer(2, n, ctx.sampleRate);
+    for (var c = 0; c < 2; c++) {
+      var ch = buf.getChannelData(c);
+      for (var i = 0; i < n; i++) {
+        ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, decay);
       }
-      report();
-    }).catch(function (err) {
-      motionState = '요청실패: ' + (err && err.message ? err.message : err);
-      report();
-    });
-  } else {
-    window.addEventListener('devicemotion', onMotion);
-    motionState = 'on(권한불필요)';
+    }
+    var conv = ctx.createConvolver();
+    conv.buffer = buf;
+    return conv;
   }
-}
 
-console.log('느즈러짐 — 서울패를 운영합니다.');
-console.log('아무데나 한 번 클릭하면 소리가 납니다.');
-console.log('teamnzrz@gmail.com / @team.nzrz');
-report();
+  function initAudio() {
+    if (audio.ctx) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+
+    var ctx = new AC();
+    audio.ctx = ctx;
+
+    audio.bus = ctx.createGain();
+    audio.bus.gain.value = CFG.volume;
+
+    // 부딪히는 순간의 반짝임에 쓸 노이즈. 한 번 만들어 재사용한다.
+    audio.noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.25), ctx.sampleRate);
+    var nd = audio.noise.getChannelData(0);
+    for (var i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+
+    var wet = ctx.createGain();
+    wet.gain.value = 0.6;
+    var verb = makeReverb(ctx, 4.0, 2.2);
+
+    audio.bus.connect(ctx.destination);   // 직접음
+    audio.bus.connect(verb);              // 잔향
+    verb.connect(wet);
+    wet.connect(ctx.destination);
+  }
+
+  // vel 은 0~1. 세게 칠수록 크고, 밝고, 오래 울린다 — 실제 금속이 그렇다.
+  function strike(freq, vel) {
+    var ctx = audio.ctx;
+    var t = ctx.currentTime;
+    var out = ctx.createGain();
+    out.gain.value = 0.42;
+
+    var detune = 1 + (Math.random() - 0.5) * 0.006;   // 칠 때마다 미세하게 다르게
+
+    MODES.forEach(function (m) {
+      var osc = ctx.createOscillator();
+      var g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq * m[0] * detune;
+
+      var peak = vel * m[1] * 0.20 * (0.35 + 0.65 * vel);
+      var dur = m[2] * (0.85 + 0.3 * vel);
+
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+      osc.connect(g);
+      g.connect(out);
+      osc.start(t);
+      osc.stop(t + dur + 0.05);
+    });
+
+    // 닿는 순간의 반짝임. 세게 깔면 쇳덩이 부딪는 소리가 되니 아주 얇게.
+    var src = ctx.createBufferSource();
+    src.buffer = audio.noise;
+    var bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = freq * 9;
+    bp.Q.value = 0.7;
+    var ng = ctx.createGain();
+    ng.gain.setValueAtTime(vel * 0.03, t);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.028);
+
+    src.connect(bp); bp.connect(ng); ng.connect(out);
+    src.start(t);
+    src.stop(t + 0.06);
+
+    out.connect(audio.bus);
+  }
+
+  // 커서가 획을 가로지를 때. 부딪히는 소리보다 훨씬 여리게 —
+  // 손끝으로 건드린 정도지 때린 게 아니다.
+  function brush(p, speed) {
+    if (!ready() || p.tone === undefined || speed < 0.06) return;
+
+    var now = audio.ctx.currentTime;
+    if (now - (p.lastBrush || -9) < 0.12) return;
+    p.lastBrush = now;
+
+    D.hit('brush');
+    strike(CFG.tones[p.tone], Math.min(speed, 1) * 0.42);
+  }
+
+  // 이웃한 두 획이 부딪혔을 때 둘 다 운다.
+  var lastChime = [];
+
+  function chime(pair, closing) {
+    if (!ready() || closing < CFG.hitFloor) return;
+
+    var now = audio.ctx.currentTime;
+    if (now - (lastChime[pair] || -9) < 0.09) return;
+    lastChime[pair] = now;
+
+    // 살짝 스친 것과 세게 부딪힌 것의 차이가 들려야 한다.
+    // 선형이면 대부분 중간에 뭉치니 1.4승으로 폭을 벌린다.
+    var vel = Math.pow(Math.min(closing / CFG.hitFull, 1), 1.4);
+
+    D.hit('chime');
+    strike(CFG.tones[pair], vel);
+    strike(CFG.tones[pair + 1], vel * 0.8);
+  }
+
+  // ══ 물리 ════════════════════════════════════════════════════
+
+  var running = false;
+
+  function start() {
+    if (running) return;
+    running = true;
+    step.prev = 0;
+    requestAnimationFrame(step);
+  }
+
+  function step(now) {
+    var dt = Math.min((now - step.prev || 16) / 1000, 0.05);
+    step.prev = now;
+
+    // 큰 각속도에서도 발산하지 않게 잘게 쪼개 적분한다
+    var n = 4, h = dt / n;
+    PARTS.forEach(function (p) {
+      for (var i = 0; i < n; i++) {
+        p.v += (-p.w0 * p.w0 * p.a - 2 * p.zeta * p.w0 * p.v) * h;
+        p.a += p.v * h;
+      }
+      if (p.a > p.max)  { p.a = p.max;  p.v *= -0.4; }
+      if (p.a < -p.max) { p.a = -p.max; p.v *= -0.4; }
+    });
+
+    collide();
+
+    var moving = false;
+    PARTS.forEach(function (p) {
+      if (Math.abs(p.a) > 0.015 || Math.abs(p.v) > 0.05) moving = true;
+      p.el.style.transform = 'rotate(' + p.a.toFixed(3) + 'deg)';
+    });
+
+    if (moving) {
+      requestAnimationFrame(step);
+    } else {
+      running = false;
+      PARTS.forEach(function (p) {
+        p.a = p.v = 0;
+        p.el.style.transform = '';
+      });
+    }
+  }
+
+  // 이웃한 획끼리 부딪히는지 본다. 풍경은 마우스가 닿아서가 아니라
+  // 서로 부딪혀서 소리가 난다.
+  function collide() {
+    for (var i = 0; i < LEGS.length - 1; i++) {
+      var a = LEGS[i], b = LEGS[i + 1];
+      var ra = a.a * RAD, rb = b.a * RAD;
+
+      // 회전한 뒤 마주보는 가장자리의 실제 x 위치
+      var edgeA = a.x + a.oxR * Math.cos(ra) - a.L * Math.sin(ra);
+      var edgeB = b.x + b.oxL * Math.cos(rb) - b.L * Math.sin(rb);
+      var gap = edgeB - edgeA;
+      if (gap >= 0) continue;
+
+      // 아래끝의 좌우 속도 (각속도가 +면 아래끝은 왼쪽으로 간다)
+      var va = -a.L * a.v * RAD;
+      var vb = -b.L * b.v * RAD;
+      var closing = va - vb;
+
+      if (closing > 0) {
+        // 질량이 같다고 보고 반발계수만큼 속도를 교환한다
+        var e = CFG.restitution;
+        var na = ((1 - e) * va + (1 + e) * vb) / 2;
+        var nb = ((1 + e) * va + (1 - e) * vb) / 2;
+        a.v = -na / (a.L * RAD);
+        b.v = -nb / (b.L * RAD);
+        chime(i, closing);
+      }
+
+      // 겹친 만큼 서로 밀어내 붙어버리는 걸 막는다
+      var pen = -gap / 2;
+      a.a += pen / (a.L * RAD);
+      b.a -= pen / (b.L * RAD);
+    }
+  }
+
+  // ══ 들어가는 문 ═════════════════════════════════════════════
+  // 화살표는 풍경이 제대로 한 번 흔들린 뒤에 드러난다.
+  // 소리와 묶으면 오디오가 막힌 기기에서 들어갈 길이 아예 없어진다.
+
+  var entered = false;
+
+  function showEnter() {
+    if (entered) return;
+    entered = true;
+    var el = document.getElementById('enter');
+    if (el) el.classList.add('on');
+  }
+
+  // ══ 입력 ════════════════════════════════════════════════════
+
+  var lastX = null, lastT = 0;
+
+  function push(e) {
+    if (still) return;
+    var pt = e.touches ? e.touches[0] : e;
+    if (!pt) return;
+
+    var r = mark.getBoundingClientRect();
+    var ux = (pt.clientX - r.left) / r.width * 1024;   // 화면 → viewBox 좌표
+    var now = e.timeStamp;
+
+    if (lastX !== null) {
+      var dt = (now - lastT) / 1000;
+      if (dt > 0.001 && dt < 0.2) {
+        var dx = ux - lastX;
+        var vx = dx / dt;
+
+        // 세기는 '얼마나 지나갔나'(dx)에 비례시킨다. 이벤트가 몇 개 오든
+        // 총합이 이동거리로 정해져 기기 성능에 안 휘둘린다. 거기에 속도
+        // 계수를 곱하되 tanh로 눌러, 빠를수록 세지되 휙 그어도 안 튄다.
+        var speed = Math.tanh(Math.abs(vx) / CFG.ref);
+
+        PARTS.forEach(function (p) {
+          var d = (ux - p.x) / CFG.sigma;
+          var falloff = Math.exp(-d * d);
+
+          // 커서가 오른쪽으로 가면 획의 아래쪽도 오른쪽으로 —
+          // 회전축이 위에 있어서 부호가 반대다
+          p.v -= CFG.drive * dx * p.gain * falloff * speed;
+
+          // 그 획을 '가로지르는 순간'에만 스치듯 울린다.
+          // 근처에 있는 내내 울리면 소리가 뭉개진다.
+          var side = ux > p.x ? 1 : -1;
+          if (p.side !== undefined && p.side !== side) brush(p, speed);
+          p.side = side;
+        });
+
+        if (Math.abs(vx) > 500) showEnter();
+        start();
+      }
+    }
+    lastX = ux;
+    lastT = now;
+  }
+
+  // 로고를 누르면 한 번 훅 흔들린다. 마우스가 없는 기기에서도 놀 수 있게.
+  // 방향은 넷이 공유하고 세기만 제각각 — 한 줄기 바람이 스친 것처럼.
+  function pluck(strength) {
+    if (still) return;
+    var s = strength || 1;
+    var dir = Math.random() < 0.5 ? -1 : 1;
+    PARTS.forEach(function (p) {
+      p.v += dir * rand(55, 120) * s * p.gain;
+    });
+    if (s > 0.5) showEnter();
+    start();
+  }
+
+  stage.addEventListener('click', function () { pluck(); });
+  stage.addEventListener('mousemove', push);
+  stage.addEventListener('mouseleave', function () { lastX = null; });
+
+  stage.addEventListener('touchmove', function (e) {
+    e.preventDefault();          // 화면이 딸려 움직이는 걸 막는다
+    D.hit('touch', 10);
+    push(e);
+  }, { passive: false });
+  stage.addEventListener('touchend', function () { lastX = null; });
+
+  // ══ 저절로 부는 바람 ════════════════════════════════════════
+  // 풍경은 원래 사람이 없어도 운다. 가만히 있는 로고는 그림이지만
+  // 이따금 저 혼자 흔들리면 만져볼 것이 된다. 소리를 열려면 클릭이
+  // 필요하다는 걸 말로 알릴 수 없으니, 살아 있다는 티를 내서 손이 가게 한다.
+  // 부딪힐락 말락 한 세기라 대개는 소리 없이 움직이기만 한다.
+
+  function breeze() {
+    if (!document.hidden) pluck(rand(0.12, 0.3));
+    setTimeout(breeze, rand(CFG.breezeMin, CFG.breezeMax));
+  }
+
+  if (!still) setTimeout(breeze, rand(1200, 2600));
+
+  // ══ 잠금 해제 ═══════════════════════════════════════════════
+  // 오디오와 모션 센서는 사용자 제스처 안에서만 열 수 있다 —
+  // 자동재생 정책과 iOS 권한 정책 때문이다. 한 번만 시도하면 그 한 번이
+  // 실패했을 때 복구할 방법이 없으므로, 제스처마다 아직 안 열린 것만 다시 본다.
+
+  // iOS는 오디오 세션이 기본 'ambient'라 Web Audio가 무음 스위치에 죽는다.
+  // (HTML5 <audio> 태그는 안 죽는다 — WebKit의 알려진 동작)
+  // 무음 파일을 <audio>로 재생시키면 세션이 'playback'으로 올라간다.
+  var SILENT_WAV = 'data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
+  var silent = null;
+
+  function unmuteIOS() {
+    if (silent) return;
+    silent = document.createElement('audio');
+    silent.setAttribute('playsinline', '');
+    silent.loop = true;
+    silent.volume = 0.02;
+    silent.src = SILENT_WAV;
+
+    var pr = silent.play();
+    if (pr && pr.then) {
+      pr.then(function () {
+        D.set('unmute', '성공');
+      }).catch(function (err) {
+        D.set('unmute', '실패: ' + (err && err.name ? err.name : err));
+        silent = null;
+      });
+    }
+  }
+
+  var grav = { x: 0, y: 0, z: 0 };
+  var lastMotionT = 0;
+  var motionOn = false;
+
+  function onMotion(e) {
+    if (still) return;
+    D.hit('motion', 10);
+
+    // acceleration은 중력이 빠진 값이라 그대로 쓴다. 비어 있는 기기에서는
+    // accelerationIncludingGravity에서 중력을 저역통과로 추정해 세 축 모두 뺀다.
+    var pure = !!(e.acceleration && e.acceleration.x !== null);
+    var src = pure ? e.acceleration : e.accelerationIncludingGravity;
+    if (!src || src.x === null) return;
+
+    var ax = src.x || 0, ay = src.y || 0, az = src.z || 0;
+    if (!pure) {
+      grav.x = grav.x * 0.88 + ax * 0.12;
+      grav.y = grav.y * 0.88 + ay * 0.12;
+      grav.z = grav.z * 0.88 + az * 0.12;
+      ax -= grav.x; ay -= grav.y; az -= grav.z;
+    }
+
+    // e.interval을 믿지 않는다. 기기마다 단위가 다르게 오는 경우가 있고,
+    // 그러면 dt가 통째로 어긋나 밀어주는 양이 사라진다. 직접 잰다.
+    var t = e.timeStamp || performance.now();
+    var dt = lastMotionT ? (t - lastMotionT) / 1000 : 0.016;
+    lastMotionT = t;
+    if (!(dt > 0.002 && dt < 0.2)) dt = 0.016;
+
+    // 흔드는 방향은 사람마다 다르다. 좌우만 보면 앞뒤로 흔드는 사람은
+    // 아무 반응도 못 얻는다. 세기는 세 축을 합쳐 재고, 기우는 방향만 x가 정한다.
+    var mag = Math.sqrt(ax * ax + ay * ay + az * az);
+
+    if (D.on) {
+      D.set('accel', 'x ' + ax.toFixed(2) + ' / 합 ' + mag.toFixed(2) +
+                     ' / dt ' + dt.toFixed(3) + (pure ? '' : ' (중력보정)'));
+    }
+
+    if (mag < CFG.shakeFloor) return;
+
+    var drive = Math.tanh(ax / 5);     // 부호 있음 — 기우는 방향
+    var pump = Math.tanh(mag / 5);     // 크기만 — 진폭을 키우는 힘
+
+    PARTS.forEach(function (p) {
+      p.v += drive * CFG.shakeDrive * p.gain * dt;
+
+      // 이미 가고 있는 쪽으로 더 밀어준다. 흔드는 박자가 진자와 안 맞아도
+      // 에너지가 쌓여 진폭이 커진다. 최대각에 가까울수록 덜 밀어 발산을 막는다.
+      var room = 1 - Math.abs(p.a) / p.max;
+      if (room > 0) {
+        var dir = (p.v || drive) > 0 ? 1 : -1;
+        p.v += dir * pump * CFG.shakePump * p.gain * dt * room;
+      }
+    });
+
+    if (mag > 1.5) showEnter();
+    start();
+  }
+
+  function enableMotion() {
+    if (motionOn || !window.DeviceMotionEvent) return;
+
+    // 안드로이드 크롬에는 requestPermission 자체가 없다 — 권한창이 안 뜨는 게 정상.
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+      motionOn = true;   // 요청은 한 번만
+      D.set('motion', '요청 중');
+      DeviceMotionEvent.requestPermission().then(function (state) {
+        if (state === 'granted') {
+          window.addEventListener('devicemotion', onMotion);
+          D.set('motion', 'on');
+        } else {
+          motionOn = false;
+          D.set('motion', '거부됨(' + state + ')');
+        }
+      }).catch(function (err) {
+        motionOn = false;
+        D.set('motion', '요청실패: ' + (err && err.message ? err.message : err));
+      });
+    } else {
+      window.addEventListener('devicemotion', onMotion);
+      motionOn = true;
+      D.set('motion', 'on(권한불필요)');
+    }
+  }
+
+  function unlock() {
+    unmuteIOS();
+    initAudio();
+    if (audio.ctx && audio.ctx.state !== 'running' && audio.ctx.resume) {
+      audio.ctx.resume().then(D.show).catch(D.show);
+    }
+    enableMotion();
+    D.show();
+  }
+
+  ['pointerdown', 'touchstart', 'click'].forEach(function (ev) {
+    window.addEventListener(ev, unlock);
+  });
+
+  console.log('느즈러짐 — 서울패를 운영합니다.');
+  console.log('teamnzrz@gmail.com / @team.nzrz');
+})();

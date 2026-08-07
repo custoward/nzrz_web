@@ -22,12 +22,19 @@ body {
   text-decoration: none;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 1.6s ease;
+  /* 나타날 때는 천천히, 호버 반응은 즉각적으로 */
+  transition: opacity 1.6s ease, color .25s ease, transform .25s ease;
 }
 
 #enter.on {
   opacity: 1;
   pointer-events: auto;
+}
+
+#enter:hover,
+#enter:focus-visible {
+  color: #999;
+  transform: translateX(5px);
 }
 
 #mark {
