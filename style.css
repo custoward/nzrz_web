@@ -41,3 +41,18 @@ body {
 #stage {
   padding: 90px 120px;
 }
+
+/* 진단 화면 — 주소에 ?debug 를 붙였을 때만 만들어진다 */
+#debug {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 10px 12px;
+  background: #000;
+  color: #0f0;
+  font: 11px/1.5 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+  z-index: 99;
+}

@@ -66,6 +66,42 @@ var MODES = [
 
 var ac = null, bus = null, noise = null;
 
+// ── 진단 ─────────────────────────────────────────────────────
+// 주소 뒤에 ?debug 를 붙였을 때만 뜬다. 모바일은 콘솔을 볼 수 없어서
+// 화면에 직접 상태를 찍어야 뭐가 막혔는지 알 수 있다.
+
+var DEBUG = location.search.indexOf('debug') >= 0;
+var dbg = null;
+var counts = { touch: 0, motion: 0, brush: 0, chime: 0 };
+var lastAccel = '-';
+
+if (DEBUG) {
+  dbg = document.createElement('pre');
+  dbg.id = 'debug';
+  document.body.appendChild(dbg);
+}
+
+function report() {
+  if (!dbg) return;
+  dbg.textContent = [
+    'secure(HTTPS)  : ' + window.isSecureContext,
+    'AudioContext   : ' + (ac ? ac.state : '아직 안 만듦'),
+    'DeviceMotion   : ' + (window.DeviceMotionEvent ? '있음' : '없음'),
+    'requestPerm    : ' + (window.DeviceMotionEvent &&
+                           typeof DeviceMotionEvent.requestPermission === 'function'
+                           ? '필요(iOS)' : '불필요(안드로이드)'),
+    'motion 상태    : ' + motionState,
+    '',
+    'touchmove      : ' + counts.touch,
+    'devicemotion   : ' + counts.motion,
+    '가속도 x       : ' + lastAccel,
+    '',
+    '스침소리       : ' + counts.brush,
+    '부딪힘소리     : ' + counts.chime,
+    'UA             : ' + navigator.userAgent.slice(0, 60)
+  ].join('\n');
+}
+
 // 잔향(여음). 노이즈를 지수적으로 감쇠시켜 임펄스응답을 즉석에서 만든다.
 function makeReverb(ctx, seconds, decay) {
   var n = Math.floor(ctx.sampleRate * seconds);
@@ -107,13 +143,24 @@ function initAudio() {
   console.log('소리가 켜졌습니다. 마크 위로 마우스를 지나가 보세요.');
 }
 
-// 첫 클릭/터치에 오디오와 모션 센서를 연다.
+// 클릭/터치에 오디오와 모션 센서를 연다.
 // 둘 다 사용자 제스처 안에서만 열 수 있다 — 자동재생 정책과 iOS 권한 정책.
-window.addEventListener('pointerdown', function () {
+//
+// once로 한 번만 시도하면, 그 한 번이 실패했을 때 영영 복구가 안 된다.
+// (모바일에서 resume()이 비동기라 첫 제스처 안에 안 끝나는 경우가 흔하다)
+// 그래서 제스처가 올 때마다 아직 안 열린 것만 다시 시도한다.
+function unlock() {
   initAudio();
-  if (ac && ac.state === 'suspended') ac.resume();
+  if (ac && ac.state !== 'running' && ac.resume) {
+    ac.resume().then(report).catch(report);
+  }
   enableMotion();
-}, { once: true });
+  report();
+}
+
+['pointerdown', 'touchstart', 'click'].forEach(function (ev) {
+  window.addEventListener(ev, unlock);
+});
 
 function strike(freq, vel) {
   var t = ac.currentTime;
@@ -173,6 +220,7 @@ function brush(p, speed) {
   if (now - (p.lastBrush || -9) < 0.12) return;
 
   p.lastBrush = now;
+  counts.brush++; report();
   strike(TONE[p.tone], Math.min(speed, 1) * 0.42);
 }
 
@@ -186,6 +234,7 @@ function chime(pairIndex, closingSpeed) {
   if (closingSpeed < 12) return;                            // 살짝 스친 건 무시
 
   chime.last[pairIndex] = now;
+  counts.chime++; report();
   var vel = Math.min(closingSpeed / 220, 1);
 
   strike(TONE[pairIndex], vel);
@@ -313,6 +362,7 @@ stage.addEventListener('mouseleave', function () { lastX = null; });
 // 모바일 — 손가락으로 쓸어도 같은 방식으로 동작한다
 stage.addEventListener('touchmove', function (e) {
   e.preventDefault();          // 화면이 딸려 움직이는 걸 막는다
+  counts.touch++; if (counts.touch % 10 === 1) report();
   push(e);
 }, { passive: false });
 stage.addEventListener('touchend', function () { lastX = null; });
@@ -327,6 +377,7 @@ var grav = { x: 0 };
 
 function onMotion(e) {
   if (still) return;
+  counts.motion++;
 
   var a = e.acceleration;
   var ax;
@@ -342,6 +393,8 @@ function onMotion(e) {
   }
 
   var dt = (e.interval || 16) / 1000;
+  lastAccel = ax.toFixed(2);
+  if (counts.motion % 15 === 1) report();
   if (Math.abs(ax) < 0.35) return;               // 손떨림 정도는 무시
 
   var kick = Math.tanh(ax / 9) * SHAKE * dt;     // 세게 흔들어도 튀지 않게
@@ -351,19 +404,39 @@ function onMotion(e) {
   start();
 }
 
-function enableMotion() {
-  if (!window.DeviceMotionEvent) return;
+var motionState = 'idle';
 
-  // iOS 13+ 는 사용자 제스처 안에서 권한을 물어야 한다
+function enableMotion() {
+  if (motionState === 'on' || motionState === 'asking') return;
+
+  if (!window.DeviceMotionEvent) {
+    motionState = '미지원';
+    return;
+  }
+
+  // iOS 13+ 는 사용자 제스처 안에서 권한을 물어야 한다.
+  // 안드로이드 크롬에는 이 함수 자체가 없다 — 권한창이 안 뜨는 게 정상이다.
   if (typeof DeviceMotionEvent.requestPermission === 'function') {
+    motionState = 'asking';
     DeviceMotionEvent.requestPermission().then(function (state) {
-      if (state === 'granted') window.addEventListener('devicemotion', onMotion);
-    }).catch(function () { /* 거부하면 그냥 조용히 넘어간다 */ });
+      if (state === 'granted') {
+        window.addEventListener('devicemotion', onMotion);
+        motionState = 'on';
+      } else {
+        motionState = '거부됨(' + state + ')';
+      }
+      report();
+    }).catch(function (err) {
+      motionState = '요청실패: ' + (err && err.message ? err.message : err);
+      report();
+    });
   } else {
     window.addEventListener('devicemotion', onMotion);
+    motionState = 'on(권한불필요)';
   }
 }
 
 console.log('느즈러짐 — 서울패를 운영합니다.');
 console.log('아무데나 한 번 클릭하면 소리가 납니다.');
 console.log('teamnzrz@gmail.com / @team.nzrz');
+report();
