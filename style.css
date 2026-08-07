@@ -93,11 +93,12 @@ body.doc {
   word-break: keep-all;
 }
 
-.doc .home img {
-  width: 52px;
-  height: auto;
-  display: block;
+.doc .home {
+  display: inline-block;
   margin-bottom: 2.5rem;
+  font-size: 20px;
+  line-height: 1;
+  text-decoration: none;
 }
 
 .doc h1 {
