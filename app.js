@@ -74,6 +74,7 @@ var DEBUG = location.search.indexOf('debug') >= 0;
 var dbg = null;
 var counts = { touch: 0, motion: 0, brush: 0, chime: 0 };
 var lastAccel = '-';
+var audioNote = '-';
 
 if (DEBUG) {
   dbg = document.createElement('pre');
@@ -86,6 +87,7 @@ function report() {
   dbg.textContent = [
     'secure(HTTPS)  : ' + window.isSecureContext,
     'AudioContext   : ' + (ac ? ac.state : '아직 안 만듦'),
+    '무음우회       : ' + audioNote,
     'DeviceMotion   : ' + (window.DeviceMotionEvent ? '있음' : '없음'),
     'requestPerm    : ' + (window.DeviceMotionEvent &&
                            typeof DeviceMotionEvent.requestPermission === 'function'
@@ -143,6 +145,33 @@ function initAudio() {
   console.log('소리가 켜졌습니다. 마크 위로 마우스를 지나가 보세요.');
 }
 
+// ── 아이폰 무음 스위치 우회 ──────────────────────────────────
+// iOS는 오디오 세션이 기본 'ambient'라 Web Audio가 무음 스위치에 죽는다.
+// (HTML5 <audio> 태그는 안 죽는다 — WebKit의 알려진 동작)
+// 무음 파일을 <audio>로 한 번 재생시키면 세션이 'playback'으로 바뀌어
+// AudioContext도 같이 살아난다. 널리 쓰이는 우회법이다.
+var silent = null;
+
+function unmuteIOS() {
+  if (silent) return;
+  silent = document.createElement('audio');
+  silent.setAttribute('playsinline', '');
+  silent.loop = true;
+  silent.volume = 0.02;
+  silent.src = 'data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
+  var pr = silent.play();
+  if (pr && pr.catch) {
+    pr.then(function () {
+      audioNote = '무음우회 성공';
+      report();
+    }).catch(function (err) {
+      audioNote = '무음우회 실패: ' + (err && err.name ? err.name : err);
+      silent = null;
+      report();
+    });
+  }
+}
+
 // 클릭/터치에 오디오와 모션 센서를 연다.
 // 둘 다 사용자 제스처 안에서만 열 수 있다 — 자동재생 정책과 iOS 권한 정책.
 //
@@ -150,6 +179,7 @@ function initAudio() {
 // (모바일에서 resume()이 비동기라 첫 제스처 안에 안 끝나는 경우가 흔하다)
 // 그래서 제스처가 올 때마다 아직 안 열린 것만 다시 시도한다.
 function unlock() {
+  unmuteIOS();
   initAudio();
   if (ac && ac.state !== 'running' && ac.resume) {
     ac.resume().then(report).catch(report);
@@ -372,7 +402,12 @@ stage.addEventListener('touchend', function () { lastX = null; });
 // 기기가 오른쪽으로 가속하면 매달린 것은 관성으로 왼쪽에 남는다 —
 // 그래서 가속도 부호를 그대로 각속도에 더한다.
 
-var SHAKE = 62;    // 가속도(m/s²) → 각속도(도/초) 변환 계수
+// 손으로 흔드는 주파수(3~5Hz)는 다리의 고유 진동수(약 1Hz)보다 훨씬 빠르다.
+// 그래서 가속도를 그대로 토크로 넣으면 부호가 계속 뒤집히며 상쇄돼 거의 안 움직인다.
+// 실제로 그네를 탈 때도 그네 주파수에 맞춰 미는 게 아니라 '가는 방향으로'
+// 체중을 싣는다. 같은 원리로 두 항을 쓴다.
+var SHAKE_DRIVE = 240;   // 방향이 있는 직접 구동 — 기울이면 그쪽으로 쏠린다
+var SHAKE_PUMP = 300;    // 움직이던 방향으로 더 밀어 진폭을 키우는 항
 var grav = { x: 0 };
 
 function onMotion(e) {
@@ -395,11 +430,23 @@ function onMotion(e) {
   var dt = (e.interval || 16) / 1000;
   lastAccel = ax.toFixed(2);
   if (counts.motion % 15 === 1) report();
-  if (Math.abs(ax) < 0.35) return;               // 손떨림 정도는 무시
+  var mag = Math.abs(ax);
+  if (mag < 0.4) return;                         // 손떨림 정도는 무시
 
-  var kick = Math.tanh(ax / 9) * SHAKE * dt;     // 세게 흔들어도 튀지 않게
+  var drive = Math.tanh(ax / 6);                 // 부호 있음
+  var pump = Math.tanh(mag / 6);                 // 크기만
+
   PARTS.forEach(function (p) {
-    p.v += kick * p.gain;
+    p.v += drive * SHAKE_DRIVE * p.gain * dt;
+
+    // 이미 가고 있는 쪽으로 더 밀어준다. 흔드는 박자가 진자와 안 맞아도
+    // 에너지가 쌓여 진폭이 커진다. 최대각에 가까울수록 덜 밀어서
+    // 무한정 커지지는 않게 한다.
+    var room = 1 - Math.abs(p.a) / p.max;
+    if (room > 0) {
+      var dir = (p.v || drive) > 0 ? 1 : -1;
+      p.v += dir * pump * SHAKE_PUMP * p.gain * dt * room;
+    }
   });
   start();
 }
