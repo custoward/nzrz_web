@@ -192,8 +192,10 @@ function chime(pairIndex, closingSpeed) {
 
 function push(e) {
   if (still) return;
+  var pt = e.touches ? e.touches[0] : e;
+  if (!pt) return;
   var r = mark.getBoundingClientRect();
-  var ux = (e.clientX - r.left) / r.width * 1024;   // 화면 → viewBox 좌표
+  var ux = (pt.clientX - r.left) / r.width * 1024;   // 화면 → viewBox 좌표
   var now = e.timeStamp;
 
   if (lastX !== null) {
