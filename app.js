@@ -192,7 +192,17 @@ function unlock() {
   window.addEventListener(ev, unlock);
 });
 
+var enterShown = false;
+
+function showEnter() {
+  if (enterShown) return;
+  enterShown = true;
+  var el = document.getElementById('enter');
+  if (el) el.classList.add('on');
+}
+
 function strike(freq, vel) {
+  showEnter();          // 소리가 처음 난 순간에 버튼이 드러난다
   var t = ac.currentTime;
   var out = ac.createGain();
   out.gain.value = 0.42;
@@ -385,6 +395,19 @@ function start() {
   step.prev = 0;
   requestAnimationFrame(step);
 }
+
+// 로고를 누르면 한 번 훅 흔들린다. 마우스가 없는 기기에서도 놀 수 있게.
+// 방향은 넷이 공유하고 세기만 제각각 — 한 줄기 바람이 스친 것처럼.
+function pluck() {
+  if (still) return;
+  var dir = Math.random() < 0.5 ? -1 : 1;
+  PARTS.forEach(function (p) {
+    p.v += dir * (55 + Math.random() * 65) * p.gain;
+  });
+  start();
+}
+
+stage.addEventListener('click', pluck);
 
 stage.addEventListener('mousemove', push);
 stage.addEventListener('mouseleave', function () { lastX = null; });
