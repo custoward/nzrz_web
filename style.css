@@ -17,10 +17,9 @@ body {
    나타날 때 화면이 밀리지 않는다. */
 #enter {
   color: #000;
-  font-size: 15px;
+  font-size: 22px;
+  line-height: 1;
   text-decoration: none;
-  border-bottom: 1px solid #000;
-  padding-bottom: 2px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 1.6s ease;
@@ -93,12 +92,11 @@ body.doc {
   word-break: keep-all;
 }
 
-.doc .home {
-  display: inline-block;
+.doc .home img {
+  width: 52px;
+  height: auto;
+  display: block;
   margin-bottom: 2.5rem;
-  font-size: 20px;
-  line-height: 1;
-  text-decoration: none;
 }
 
 .doc h1 {
