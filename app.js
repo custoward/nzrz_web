@@ -107,10 +107,12 @@ function initAudio() {
   console.log('소리가 켜졌습니다. 마크 위로 마우스를 지나가 보세요.');
 }
 
-// 첫 클릭에 오디오를 연다 (사파리·크롬 모두 사용자 제스처를 요구한다)
+// 첫 클릭/터치에 오디오와 모션 센서를 연다.
+// 둘 다 사용자 제스처 안에서만 열 수 있다 — 자동재생 정책과 iOS 권한 정책.
 window.addEventListener('pointerdown', function () {
   initAudio();
   if (ac && ac.state === 'suspended') ac.resume();
+  enableMotion();
 }, { once: true });
 
 function strike(freq, vel) {
@@ -307,6 +309,60 @@ function start() {
 
 stage.addEventListener('mousemove', push);
 stage.addEventListener('mouseleave', function () { lastX = null; });
+
+// 모바일 — 손가락으로 쓸어도 같은 방식으로 동작한다
+stage.addEventListener('touchmove', function (e) {
+  e.preventDefault();          // 화면이 딸려 움직이는 걸 막는다
+  push(e);
+}, { passive: false });
+stage.addEventListener('touchend', function () { lastX = null; });
+
+// ── 흔들기 ───────────────────────────────────────────────────
+// 폰을 흔들면 진짜 풍경처럼 흔들린다.
+// 기기가 오른쪽으로 가속하면 매달린 것은 관성으로 왼쪽에 남는다 —
+// 그래서 가속도 부호를 그대로 각속도에 더한다.
+
+var SHAKE = 62;    // 가속도(m/s²) → 각속도(도/초) 변환 계수
+var grav = { x: 0 };
+
+function onMotion(e) {
+  if (still) return;
+
+  var a = e.acceleration;
+  var ax;
+
+  if (a && a.x !== null) {
+    ax = a.x;                                    // 중력이 이미 빠진 값
+  } else {
+    var g = e.accelerationIncludingGravity;
+    if (!g || g.x === null) return;
+    // 중력 성분을 저역통과로 추정해 빼낸다
+    grav.x = grav.x * 0.88 + g.x * 0.12;
+    ax = g.x - grav.x;
+  }
+
+  var dt = (e.interval || 16) / 1000;
+  if (Math.abs(ax) < 0.35) return;               // 손떨림 정도는 무시
+
+  var kick = Math.tanh(ax / 9) * SHAKE * dt;     // 세게 흔들어도 튀지 않게
+  PARTS.forEach(function (p) {
+    p.v += kick * p.gain;
+  });
+  start();
+}
+
+function enableMotion() {
+  if (!window.DeviceMotionEvent) return;
+
+  // iOS 13+ 는 사용자 제스처 안에서 권한을 물어야 한다
+  if (typeof DeviceMotionEvent.requestPermission === 'function') {
+    DeviceMotionEvent.requestPermission().then(function (state) {
+      if (state === 'granted') window.addEventListener('devicemotion', onMotion);
+    }).catch(function () { /* 거부하면 그냥 조용히 넘어간다 */ });
+  } else {
+    window.addEventListener('devicemotion', onMotion);
+  }
+}
 
 console.log('느즈러짐 — 서울패를 운영합니다.');
 console.log('아무데나 한 번 클릭하면 소리가 납니다.');
