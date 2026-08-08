@@ -36,7 +36,10 @@
 
     // 저절로 부는 바람
     breezeMin: 4500,   // 다음 바람까지 대기(ms)
-    breezeMax: 11000
+    breezeMax: 11000,
+
+    // 들어가는 문
+    enterDelay: 1800   // 첫 부딪힘 뒤 화살표가 나오기까지(ms)
   };
 
   // 풍경은 종이 아니라 양끝이 자유로운 금속 관이다. 관의 진동 모드는
@@ -329,6 +332,7 @@
         a.v = -na / (a.L * RAD);
         b.v = -nb / (b.L * RAD);
         chime(i, closing);
+        if (closing >= CFG.hitFloor) showEnter();
       }
 
       // 겹친 만큼 서로 밀어내 붙어버리는 걸 막는다
@@ -339,16 +343,25 @@
   }
 
   // ══ 들어가는 문 ═════════════════════════════════════════════
-  // 화살표는 풍경이 제대로 한 번 흔들린 뒤에 드러난다.
-  // 소리와 묶으면 오디오가 막힌 기기에서 들어갈 길이 아예 없어진다.
+  // 화살표는 획끼리 한 번 부딪히고 나서야 드러난다. 흔들어보기만 한
+  // 사람과 실제로 울려본 사람을 가르는 문턱이다.
+  //
+  // 다만 조건은 '소리가 났는가'가 아니라 '부딪혔는가'로 잡는다. 소리에
+  // 매달면 오디오가 막힌 기기에서는 들어갈 길이 아예 없어진다. 판정
+  // 문턱(hitFloor)은 소리 쪽과 같으므로 들리는 기기에서는 결국 같은 순간이다.
+  //
+  // 신호가 온 자리에서 바로 띄우면 한창 흔들리는 와중에 묻힌다.
+  // 한 박 쉬었다가, 움직임이 잦아들 즈음 스르르 밀려나오게 한다.
 
   var entered = false;
 
   function showEnter() {
     if (entered) return;
     entered = true;
-    var el = document.getElementById('enter');
-    if (el) el.classList.add('on');
+    setTimeout(function () {
+      var el = document.getElementById('enter');
+      if (el) el.classList.add('on');
+    }, CFG.enterDelay);
   }
 
   // ══ 입력 ════════════════════════════════════════════════════
@@ -390,7 +403,6 @@
           p.side = side;
         });
 
-        if (Math.abs(vx) > 500) showEnter();
         start();
       }
     }
@@ -407,7 +419,6 @@
     PARTS.forEach(function (p) {
       p.v += dir * rand(55, 120) * s * p.gain;
     });
-    if (s > 0.5) showEnter();
     start();
   }
 
@@ -520,7 +531,6 @@
       }
     });
 
-    if (mag > 1.5) showEnter();
     start();
   }
 

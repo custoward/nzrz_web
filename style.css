@@ -22,13 +22,40 @@ body {
   text-decoration: none;
   opacity: 0;
   pointer-events: none;
-  /* 나타날 때는 천천히, 호버 반응은 즉각적으로 */
-  transition: opacity 1.6s ease, color .25s ease, transform .25s ease;
+  /* 호버 반응만 즉각적으로. 등장은 아래 keyframes가 맡는다 */
+  transition: color .25s ease, transform .25s ease;
 }
 
+/* 등장을 transition이 아니라 animation으로 두는 이유:
+   fill을 남기지 않아야 애니메이션이 끝난 뒤 호버의 transform이 다시 먹는다. */
 #enter.on {
   opacity: 1;
   pointer-events: auto;
+  animation: enter-in 2.8s cubic-bezier(.16, 1, .3, 1);
+}
+
+/* 흐릿한 채로 왼쪽 뒤에서 천천히 밀려나와 초점이 맞는다 */
+@keyframes enter-in {
+  from {
+    opacity: 0;
+    transform: translateX(-26px) scale(.8);
+    filter: blur(6px);
+  }
+  60% {
+    opacity: .85;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+/* 움직임을 원치 않는 사람에게는 밝기만 바뀐다 */
+@media (prefers-reduced-motion: reduce) {
+  #enter.on {
+    animation: none;
+  }
 }
 
 #enter:hover,
