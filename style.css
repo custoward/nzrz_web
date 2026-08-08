@@ -13,15 +13,26 @@ body {
                -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-/* 첫 소리가 난 뒤에야 나타난다. 자리는 처음부터 잡아두므로
-   나타날 때 화면이 밀리지 않는다. */
+/* "소리 켜기"와 화살표가 같은 칸을 겹쳐 쓴다. 자리는 처음부터
+   잡아두므로 무엇이 나타나든 화면이 밀리지 않는다. */
+.slot {
+  display: grid;
+  place-items: center;
+}
+
+.slot > * {
+  grid-area: 1 / 1;
+}
+
+/* 첫 소리가 난 뒤에야 나타난다.
+   visibility로 감춰야 보이지 않는 동안 탭 이동에도 안 걸린다. */
 #enter {
   color: #000;
   font-size: 22px;
   line-height: 1;
   text-decoration: none;
   opacity: 0;
-  pointer-events: none;
+  visibility: hidden;
   /* 호버 반응만 즉각적으로. 등장은 아래 keyframes가 맡는다 */
   transition: color .25s ease, transform .25s ease;
 }
@@ -30,7 +41,7 @@ body {
    fill을 남기지 않아야 애니메이션이 끝난 뒤 호버의 transform이 다시 먹는다. */
 #enter.on {
   opacity: 1;
-  pointer-events: auto;
+  visibility: visible;
   animation: enter-in 2.8s cubic-bezier(.16, 1, .3, 1);
 }
 
@@ -64,6 +75,36 @@ body {
   transform: translateX(5px);
 }
 
+/* 소리가 났어야 할 순간에 소리가 없었을 때만 나타난다.
+   화살표와 달리 이건 사라지기도 하므로, visibility 전환을
+   페이드가 끝난 뒤로 미뤄야 툭 꺼지지 않는다. */
+#sound {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  color: #999;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 1.2s ease, color .25s ease, visibility 0s linear 1.2s;
+}
+
+#sound.on {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 1.2s ease, color .25s ease, visibility 0s;
+}
+
+#sound:hover,
+#sound:focus-visible {
+  color: #000;
+}
+
 #mark {
   width: 180px;
   max-width: 40vw;
@@ -94,9 +135,6 @@ body {
    스쳐 지나가는 것만으로도 반응한다. */
 #stage {
   padding: 90px 120px;
-  /* 눌러도 된다는 유일한 신호. 브라우저 정책상 소리를 열려면
-     클릭·탭이 반드시 한 번 필요한데, 빈 페이지에는 알릴 방법이 없다. */
-  cursor: pointer;
 }
 
 /* 진단 화면 — 주소에 ?debug 를 붙였을 때만 만들어진다 */

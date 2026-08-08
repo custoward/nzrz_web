@@ -332,7 +332,13 @@
         a.v = -na / (a.L * RAD);
         b.v = -nb / (b.L * RAD);
         chime(i, closing);
-        if (closing >= CFG.hitFloor) showEnter();
+
+        // 소리가 날 만한 세기로 부딪혔다. 여기서 길이 갈린다 —
+        // 실제로 울렸으면 문이 열리고, 소리가 잠겨 있었으면 여는 법을 알린다.
+        if (closing >= CFG.hitFloor) {
+          if (ready()) showEnter();
+          else hintSound();
+        }
       }
 
       // 겹친 만큼 서로 밀어내 붙어버리는 걸 막는다
@@ -343,12 +349,8 @@
   }
 
   // ══ 들어가는 문 ═════════════════════════════════════════════
-  // 화살표는 획끼리 한 번 부딪히고 나서야 드러난다. 흔들어보기만 한
-  // 사람과 실제로 울려본 사람을 가르는 문턱이다.
-  //
-  // 다만 조건은 '소리가 났는가'가 아니라 '부딪혔는가'로 잡는다. 소리에
-  // 매달면 오디오가 막힌 기기에서는 들어갈 길이 아예 없어진다. 판정
-  // 문턱(hitFloor)은 소리 쪽과 같으므로 들리는 기기에서는 결국 같은 순간이다.
+  // 화살표는 획끼리 부딪혀 실제로 소리가 난 뒤에야 드러난다.
+  // 흔들어보기만 한 사람과 울려본 사람을 가르는 문턱이다.
   //
   // 신호가 온 자리에서 바로 띄우면 한창 흔들리는 와중에 묻힌다.
   // 한 박 쉬었다가, 움직임이 잦아들 즈음 스르르 밀려나오게 한다.
@@ -362,6 +364,38 @@
       var el = document.getElementById('enter');
       if (el) el.classList.add('on');
     }, CFG.enterDelay);
+  }
+
+  // ══ 소리 켜기 ═══════════════════════════════════════════════
+  // 브라우저 정책상 소리를 열려면 클릭·탭이 한 번 필요한데, 빈 페이지에는
+  // 그걸 알릴 방법이 없다. 상시 안내문을 놓는 대신 침묵 자체를 신호로 쓴다:
+  // 소리가 났어야 할 바로 그 순간에 소리가 없으면, 그때 여는 법이 나타난다.
+  // 소리가 이미 열린 사람에게는 한 번도 뜨지 않는다.
+
+  var soundBtn = document.getElementById('sound');
+  var hinted = false;
+
+  function hintSound() {
+    if (hinted || !soundBtn) return;
+    hinted = true;
+    soundBtn.classList.add('on');
+  }
+
+  function hideHint() {
+    if (soundBtn) soundBtn.classList.remove('on');
+  }
+
+  if (soundBtn) {
+    soundBtn.addEventListener('click', function () {
+      // 여는 일 자체는 window의 unlock 리스너가 이미 했다. 여기서는 결과만 본다.
+      // resume()이 끝날 틈을 주고 확인한다.
+      setTimeout(function () {
+        hideHint();
+        // 눌렀는데도 안 열리는 기기가 있다(무음 스위치, 정책, 미지원).
+        // 시도한 사람을 현관에 가둘 수는 없으니 소리 없이도 문을 연다.
+        if (!ready()) showEnter();
+      }, 600);
+    });
   }
 
   // ══ 입력 ════════════════════════════════════════════════════
@@ -560,14 +594,20 @@
     }
   }
 
+  // 소리가 열렸으면 여는 법을 알릴 이유가 없다. 어느 제스처로 열렸든 거둔다.
+  function settled() {
+    if (ready()) hideHint();
+    D.show();
+  }
+
   function unlock() {
     unmuteIOS();
     initAudio();
     if (audio.ctx && audio.ctx.state !== 'running' && audio.ctx.resume) {
-      audio.ctx.resume().then(D.show).catch(D.show);
+      audio.ctx.resume().then(settled).catch(settled);
     }
     enableMotion();
-    D.show();
+    settled();
   }
 
   ['pointerdown', 'touchstart', 'click'].forEach(function (ev) {
