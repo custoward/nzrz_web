@@ -120,3 +120,50 @@ body {
 }
 
 /* 메인 페이지(.doc) 스타일은 main.css 로 분리했다. */
+
+/* ── 파동 ────────────────────────────────────────────────────
+   부딪히면 그 자리에서 고리가 퍼져나간다. 소리는 파동인데 눈에는
+   안 보이니, 그 파동을 배경에 그린다. 세기·크기·속도는 전부 충돌
+   세기에서 나온다 — 음량을 정하는 값과 같은 값이다(app.js ripple).
+
+   z-index: -1 은 body의 흰 배경 위, 내용 아래에 깔린다. */
+#waves {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.wave {
+  position: absolute;
+  border: 1px solid #000;
+  border-radius: 50%;
+  opacity: 0;
+  /* 지름을 정해두고 0에서 1까지 키운다. 좌표는 고리의 중심이다. */
+  transform: translate(-50%, -50%) scale(0);
+  animation-name: wave-out;
+  /* 파동은 일정한 속도로 퍼지고 진폭만 잦아든다. 이징을 주면
+     순식간에 커졌다 멈추는 원이 되지 파동으로 안 보인다. */
+  animation-timing-function: linear;
+  /* 지연되는 동안에도 from 상태로 있어야 안 번쩍인다 */
+  animation-fill-mode: both;
+}
+
+@keyframes wave-out {
+  from {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: var(--peak);
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+
+/* 움직임을 원치 않는 사람에게는 그리지 않는다 */
+@media (prefers-reduced-motion: reduce) {
+  #waves {
+    display: none;
+  }
+}

@@ -39,7 +39,12 @@
     breezeMax: 11000,
 
     // 들어가는 문
-    enterDelay: 1800   // 첫 부딪힘 뒤 화살표가 나오기까지(ms)
+    enterDelay: 1800,  // 첫 부딪힘 뒤 화살표가 나오기까지(ms)
+
+    // 부딪힌 자리에서 퍼지는 파동
+    waveRings: 2,      // 한 번에 겹쳐 내보내는 고리 수
+    waveMin: 130,      // 살짝 스쳤을 때 퍼지는 반지름(px)
+    waveMax: 540       // 세게 부딪혔을 때
   };
 
   // 풍경은 종이 아니라 양끝이 자유로운 금속 관이다. 관의 진동 모드는
@@ -81,6 +86,11 @@
     p.el = mark.querySelector(p.sel);
     p.a = 0;   // 각도(도)
     p.v = 0;   // 각속도(도/초)
+
+    // 회전축의 y. transform-origin이 획의 윗변(0%)이므로 bbox 위쪽이 곧 축이다.
+    // 파동을 부딪힌 자리에 그리려면 x뿐 아니라 y도 필요한데,
+    // 상수로 박아두면 로고를 고칠 때 어긋나므로 그때그때 잰다.
+    p.y = p.el.getBBox().y;
   });
 
   function rand(a, b) { return a + Math.random() * (b - a); }
@@ -333,6 +343,10 @@
         b.v = -nb / (b.L * RAD);
         chime(i, closing);
 
+        // 닿은 자리. 두 가장자리가 만난 지점이니 x는 그 중간이고,
+        // y는 축에서 획 길이만큼 내려온 곳 — 기울면 그만큼 덜 내려온다.
+        ripple(i, (edgeA + edgeB) / 2, a.y + a.L * Math.cos(ra), closing);
+
         // 소리가 날 만한 세기로 부딪혔다. 여기서 길이 갈린다 —
         // 실제로 울렸으면 문이 열리고, 소리가 잠겨 있었으면 여는 법을 알린다.
         if (closing >= CFG.hitFloor) {
@@ -346,6 +360,60 @@
       a.a += pen / (a.L * RAD);
       b.a -= pen / (b.L * RAD);
     }
+  }
+
+  // ══ 파동 ════════════════════════════════════════════════════
+  // 소리는 파동인데 눈에는 안 보인다. 부딪힌 자리에서 고리를 퍼뜨려
+  // 그 파동을 배경에 그린다. 세기·크기·속도는 전부 충돌 세기에서 뽑되,
+  // 음량을 정하는 것과 같은 식(1.4승)을 쓴다 — 크게 울린 것이 크게 퍼진다.
+  //
+  // 소리와 달리 오디오 상태를 보지 않는다. 볼륨을 내려둔 사람에게는
+  // 이게 유일하게 남는 울림이다.
+
+  var waves = document.getElementById('waves');
+  var lastWave = [];
+
+  function ripple(pair, vx, vy, closing) {
+    if (!waves || still || closing < CFG.hitFloor) return;
+
+    // 세게 흔들면 세 쌍이 쉬지 않고 부딪힌다. 고리가 무한정 쌓이면
+    // 화면이 뭉개지고 요소도 계속 늘어난다. 넘치면 그냥 그리지 않는다.
+    if (waves.childElementCount > 24) return;
+
+    // 한 번 부딪히면 몇 프레임에 걸쳐 겹쳐 판정된다. 소리와 같은 간격으로 솎는다.
+    var now = performance.now();
+    if (now - (lastWave[pair] || -9999) < 90) return;
+    lastWave[pair] = now;
+
+    // viewBox 좌표 → 화면 좌표. 로고 크기가 화면마다 다르므로 그때그때 잰다.
+    var r = mark.getBoundingClientRect();
+    var x = r.left + vx / 1024 * r.width;
+    var y = r.top + vy / 1024 * r.height;
+
+    var vel = Math.pow(Math.min(closing / CFG.hitFull, 1), 1.4);
+    var span = CFG.waveMin + (CFG.waveMax - CFG.waveMin) * vel;
+
+    // 고리 하나로는 파문이 안 된다. 뒤따르는 고리를 조금 늦게, 조금 여리게.
+    for (var i = 0; i < CFG.waveRings; i++) {
+      emit(x, y, span * (1 - i * 0.22), vel * (1 - i * 0.45), i * 0.11);
+    }
+  }
+
+  function emit(x, y, radius, strength, delay) {
+    var el = document.createElement('div');
+    el.className = 'wave';
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    el.style.width = el.style.height = radius * 2 + 'px';
+    // 진하게 깔면 장식이 된다. 흰 배경 위 1px 검정 선이라
+    // 이 정도가 "보이긴 하는데 눈에 안 띄는" 경계다.
+    el.style.setProperty('--peak', (0.10 + 0.35 * strength).toFixed(3));
+    el.style.animationDuration = (1.0 + 1.3 * strength).toFixed(2) + 's';
+    el.style.animationDelay = delay.toFixed(2) + 's';
+    el.addEventListener('animationend', function () {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    });
+    waves.appendChild(el);
   }
 
   // ══ 들어가는 문 ═════════════════════════════════════════════
