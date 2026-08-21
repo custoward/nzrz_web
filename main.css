@@ -1,16 +1,23 @@
-/* 메인 페이지 전용.
-   style.css(공통 바탕) 다음에 불러온다. 랜딩은 body가 flex 중앙정렬이지만
-   여기는 읽는 문서라 .doc 로 그걸 되돌리고 글 흐름대로 쌓는다. */
+/* 메인 페이지 전용. style.css(공통 바탕) 다음에 불러온다.
+   랜딩은 body가 flex 중앙정렬이지만 여기는 읽는 문서라
+   .doc 로 그걸 되돌리고 글 흐름대로 쌓는다.
+
+   원칙(지시서): 보더·카드·구분선·박스를 쓰지 않는다.
+   섹션은 여백과 위계만으로 나눈다. */
 body.doc {
   display: block;
   max-width: 40rem;
   margin: 0 auto;
-  padding: 3.5rem 1.5rem 5rem;
+  padding: 3.5rem 1.5rem 6rem;
   height: auto;
   color: #000;
   font-size: 17px;
   line-height: 1.8;
   word-break: keep-all;
+}
+
+.doc a {
+  color: #000;
 }
 
 .doc .home img {
@@ -19,8 +26,10 @@ body.doc {
   max-width: 25vw;
   height: auto;
   display: block;
-  margin-bottom: 2.5rem;
+  margin-bottom: 3rem;
 }
+
+/* ── 문패 ────────────────────────────────────────────────── */
 
 .doc h1 {
   font-size: 2.2rem;
@@ -29,35 +38,165 @@ body.doc {
   margin: 0 0 1rem;
 }
 
-.doc h2 {
+.doc .lead {
+  margin: 0;
   font-size: 1.05rem;
-  font-weight: 600;
-  margin: 4rem 0 .8rem;
 }
 
-.doc .lead {
-  margin-bottom: 0;
+/* 뜻풀이. 슬로건을 받쳐주는 자리라 한 단 낮춘다. */
+.doc .gloss {
+  margin: .4rem 0 0;
+  color: #999;
+  font-size: .9rem;
+}
+
+/* ── 섹션 ────────────────────────────────────────────────── */
+/* 구분선 대신 여백으로 끊는다. 스크롤하며 한 칸씩 열린다. */
+.doc section {
+  margin-top: 7rem;
+}
+
+/* 한옥의 동선을 그대로 쓴다 — 대문간, 안마당, 사랑채, 사당.
+   장식이 아니라 지금 어디쯤 들어와 있는지 알려주는 위계다. */
+.doc .eyebrow {
+  margin: 0 0 .5rem;
+  color: #999;
+  font-size: .8rem;
+  letter-spacing: .12em;
+}
+
+.doc h2 {
+  font-size: 1.55rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 0 0 1.2rem;
+}
+
+/* 배지라고 부르지만 알약 상자로 만들지 않는다. 작은 글씨면 충분하다. */
+.doc .badge {
+  margin: -.7rem 0 1.2rem;
+  color: #999;
+  font-size: .82rem;
+  letter-spacing: .06em;
+}
+
+.doc .body-lead {
+  margin: 0 0 2rem;
+  line-height: 1.9;
 }
 
 .doc p {
   margin: 0 0 1rem;
 }
 
-.doc ul {
-  margin: 0 0 1rem;
-  padding-left: 1.2rem;
+/* ── 항목 ────────────────────────────────────────────────── */
+/* 4거점·하는 일·계보·사람·연락을 전부 이 하나로 짠다.
+   패턴이 하나면 장식 없이도 페이지가 한 몸으로 읽힌다. */
+.doc .entries {
+  margin: 0;
 }
 
-.doc li {
-  margin-bottom: .3rem;
+.doc .entry {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: 0 1.5rem;
+  margin-bottom: 1.6rem;
 }
 
-.doc a {
-  color: #000;
+.doc .entry:last-child {
+  margin-bottom: 0;
 }
 
-.doc footer {
-  margin-top: 5rem;
-  font-size: .85rem;
+.doc .mark {
+  color: #999;
+  font-size: .9rem;
+  /* 제목 줄의 시선 높이에 맞춘다 */
+  line-height: 1.8;
+}
+
+.doc .mark.num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .04em;
+}
+
+.doc .text .title {
+  margin: 0;
+}
+
+.doc .text .desc {
+  margin: .1rem 0 0;
   color: #666;
+  font-size: .95rem;
+}
+
+/* 느즈러짐이 실제로 운영하는 거점. 이 문단의 요지라 한 번 짚는다. */
+.doc .entry.here .mark,
+.doc .entry.here .title {
+  color: #000;
+  font-weight: 600;
+}
+
+/* 계보처럼 표시자가 없는 항목은 한 단으로 편다.
+   빈 칸을 남겨두면 정렬이 어긋난 것처럼 보인다. */
+.doc .entry.solo {
+  grid-template-columns: 1fr;
+}
+
+/* 아직 비어 있는 자리 */
+.doc .entry.empty .title {
+  color: #ccc;
+}
+
+/* ── 흐름 ────────────────────────────────────────────────── */
+.doc .flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .3rem .7rem;
+  margin: 0 0 1.6rem;
+  color: #666;
+  font-size: .95rem;
+}
+
+.doc .flow .arrow {
+  color: #ccc;
+}
+
+/* 곁가지 정보 — 본문보다 한 단 낮게 */
+.doc .aside {
+  margin: 0;
+  color: #666;
+  font-size: .9rem;
+}
+
+/* ── 푸터 ────────────────────────────────────────────────── */
+.doc footer {
+  margin-top: 7rem;
+  color: #999;
+  font-size: .85rem;
+}
+
+.doc footer p {
+  margin: 0;
+}
+
+/* ── 좁은 화면 ───────────────────────────────────────────── */
+/* 6.5rem 짜리 좌측 단이 버티기 어려워지면 위아래로 쌓는다 */
+@media (max-width: 34rem) {
+  body.doc {
+    padding: 2.5rem 1.25rem 4rem;
+  }
+
+  .doc section {
+    margin-top: 5rem;
+  }
+
+  .doc .entry {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .doc .mark {
+    line-height: 1.6;
+  }
 }
