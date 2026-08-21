@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex"/>
+<title>찰랑 데이트맵</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css"/>
+<style>
+  :root{--bg:rgba(255,255,255,.96);--fg:#1c1c1e;--muted:#6b6b70;--accent:#ff7a1a;--lock:#e0361f;}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI",sans-serif;color:var(--fg)}
+  #map{position:absolute;inset:0;background:#aadaff}
+  #panel{position:fixed;top:12px;right:12px;z-index:700;width:320px;max-width:calc(100vw - 24px);background:var(--bg);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.18);padding:14px;backdrop-filter:blur(8px);max-height:calc(100vh - 24px);overflow:auto}
+  #panel h1{font-size:15px;margin:0 0 6px}
+  .modeBadge{display:inline-block;font-size:11px;border-radius:6px;padding:1px 7px;color:#fff}
+  .modeBadge.viewer{background:#8e8e93}.modeBadge.friend{background:#34a853}.modeBadge.admin{background:var(--accent)}
+  .readout{background:#f4f4f6;border-radius:10px;padding:10px;margin:8px 0;font-size:13px;line-height:1.5}
+  .readout .zone{font-size:15px;font-weight:700}.readout .muted{color:var(--muted)}
+  .row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center}
+  button{font:inherit;font-size:13px;border:0;border-radius:9px;padding:8px 10px;cursor:pointer;background:#e9e9ee;color:var(--fg)}
+  button.primary{background:var(--accent);color:#fff}button.ghost{background:transparent;border:1px solid #d0d0d5}
+  button:disabled{opacity:.4;cursor:not-allowed}button:active:not(:disabled){transform:translateY(1px)}
+  .online{font-size:12px;color:var(--muted);margin:4px 0}
+  .who{font-size:12px;color:var(--muted);margin:2px 0 8px;display:flex;align-items:center;gap:6px}
+  .who b{color:var(--fg)}
+  input[type=color]{width:28px;height:28px;border:0;background:none;padding:0;cursor:pointer}
+  .field{display:flex;flex-direction:column;gap:2px;margin-bottom:6px;font-size:12px;color:var(--muted)}
+  .field input{font:inherit;font-size:13px;color:var(--fg);padding:7px 8px;border:1px solid #d0d0d5;border-radius:8px}
+  .hint{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:900;display:flex;align-items:center;justify-content:center}
+  .modal{background:#fff;border-radius:16px;padding:20px;width:320px;max-width:calc(100vw - 24px)}
+  .modal h2{font-size:17px;margin:0 0 4px}.modal p{font-size:12px;color:#6b6b70;margin:0 0 14px}
+  #editbar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:750;background:var(--bg);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.2);padding:12px 14px;width:min(560px,calc(100vw - 24px));display:none}
+  #editbar.on{display:block}
+  #editbar .er{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  #editbar input{font:inherit;font-size:13px;padding:6px 8px;border:1px solid #d0d0d5;border-radius:8px;width:110px}
+  #busy{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1000;background:rgba(0,0,0,.78);color:#fff;padding:14px 20px;border-radius:12px;font-size:14px;display:none;align-items:center;gap:10px}
+  #busy.on{display:flex}
+  #drawBanner{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:760;background:var(--accent);color:#fff;padding:9px 16px;border-radius:999px;font-size:13px;font-weight:600;box-shadow:0 3px 12px rgba(0,0,0,.3);display:none}
+  #drawBanner.on{display:block}
+  .leaflet-container.drawing{cursor:crosshair!important}
+  .spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .zoneLbl{background:transparent;border:0;box-shadow:none;font-weight:700;font-size:12px;color:#333;text-shadow:0 0 3px #fff,0 0 3px #fff}
+  .leaflet-pm-tooltip{display:none!important}
+  .eblab{font-size:11px;color:var(--muted);margin-left:4px}
+  .fbZone{background:#fff;border:2px solid #ff2d55;border-radius:12px;padding:1px 7px;font-size:12px;font-weight:800;color:#ff2d55;box-shadow:0 2px 6px rgba(0,0,0,.35);white-space:nowrap}
+  .fbPin{width:24px;height:24px;background:#ff2d55;border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
+  .fbPin span{transform:rotate(45deg);font-size:11px}
+  @media (prefers-color-scheme:dark){:root{--bg:rgba(28,28,30,.96);--fg:#f2f2f7;--muted:#9a9aa2}.readout{background:#2c2c2e}button{background:#3a3a3c;color:#f2f2f7}button.ghost{border-color:#48484a}.field input,#editbar input{background:#2c2c2e;border-color:#48484a;color:#f2f2f7}.modal{background:#1c1c1e}.modal p{color:#9a9aa2}.zoneLbl{color:#eee;text-shadow:0 0 3px #000,0 0 3px #000}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="busy"><span class="spin"></span><span id="busyText">처리 중…</span></div>
+<div id="drawBanner">🖊️ 지도를 클릭해 꼭짓점을 찍으세요 · 되돌리기 <b>Backspace</b> · 나가기 <b>Esc</b> · 완료: 첫 점 다시 클릭</div>
+
+<div id="panel" style="display:none">
+  <h1>찰랑 데이트맵 <span id="mode" class="modeBadge viewer">뷰어</span></h1>
+  <div class="who" id="who">
+    <span id="whoName">둘러보는 중</span>
+    <input type="color" id="myColor" title="내 색상" style="display:none">
+    <button class="ghost" id="btnLogin" style="margin-left:auto;padding:5px 9px">로그인</button>
+  </div>
+  <div class="online" id="online">접속 …</div>
+  <div class="readout" id="readout">…</div>
+  <div class="row" id="writeRow" style="display:none">
+    <button class="primary" id="btnDraw">＋ 다각형 그리기</button>
+  </div>
+  <div class="row">
+    <button class="ghost" id="btnFly">주소로 이동</button>
+    <button class="ghost" id="btnExport">seed 내보내기</button>
+    <button class="ghost" id="btnSeed" style="display:none">기본 권역 올리기</button>
+  </div>
+  <div class="hint" id="hint">둘러보기: 지도 이동으로 권역 확인, 권역 밖을 클릭하면 피드백을 남길 수 있어요. 편집하려면 로그인하세요.</div>
+</div>
+
+<div id="editbar">
+  <div class="er">
+    <b>편집 중</b>
+    <span class="eblab">아이디</span><input id="eb_id" placeholder="영문 id" style="width:100px">
+    <span class="eblab">이름</span><input id="eb_name" placeholder="권역 이름">
+    <span class="eblab">지역</span><input id="eb_region" placeholder="지역" style="width:120px">
+    <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input id="eb_enabled" type="checkbox" style="width:auto">활성</label>
+    <button class="primary" id="eb_save">저장</button>
+    <button class="ghost" id="eb_cancel">취소</button>
+    <button class="ghost" id="eb_delete" style="color:#e0361f;display:none">삭제</button>
+  </div>
+  <div class="hint">꼭짓점 드래그로 이동, 변 중간을 눌러 점 추가, 점 우클릭 삭제. 다 되면 저장.</div>
+</div>
+
+<div class="modal-bg" id="login">
+  <div class="modal">
+    <h2>찰랑 데이트맵</h2>
+    <p>이름을 입력하세요. 편집하려면 암호도 입력하세요.<br>· 관리자: 생성·수정·삭제  · 친구: 생성·수정(삭제 X)  · 빈칸: 둘러보기</p>
+    <div class="field">이름<input id="in_name" placeholder="예: 민성"></div>
+    <div class="field">암호(선택)<input id="in_pw" type="password" placeholder="편집하려면 입력"></div>
+    <div class="row" style="margin-top:6px"><button class="primary" id="in_go" style="flex:1">시작</button><button class="ghost" id="in_skip">그냥 둘러보기</button></div>
+    <div class="hint">새로고침하면 세션이 초기화됩니다(캐시 없음).</div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script>
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAKduk9_kBpXWUwdeYbVqp3hpbqlLPXeqE",
+  authDomain: "challang-10ab7.firebaseapp.com",
+  projectId: "challang-10ab7",
+  storageBucket: "challang-10ab7.firebasestorage.app",
+  messagingSenderId: "127707099717",
+  appId: "1:127707099717:web:1d2cbcd966ad658c82292c",
+};
+const ADMIN_PW = "486", FRIEND_PW = "1004";
+const ADMIN_NAMES = ["영준","민성","수민","유현","이삭","근형","지우"];
+const SEED_ZONES = [{"id": "hongdae", "name": "홍대", "region": "서울 마포", "centerLat": 37.5563, "centerLng": 126.9237, "radiusMeters": 700, "adjacentZoneIds": ["sinchon", "yeonnam", "hapjeong"], "priority": 90, "enabled": true}, {"id": "sinchon", "name": "신촌", "region": "서울 서대문", "centerLat": 37.5599, "centerLng": 126.9425, "radiusMeters": 700, "adjacentZoneIds": ["hongdae", "ewha"], "priority": 85, "enabled": true}, {"id": "ewha", "name": "이대", "region": "서울 서대문", "centerLat": 37.5567, "centerLng": 126.9468, "radiusMeters": 500, "adjacentZoneIds": ["sinchon"], "priority": 80, "enabled": true}, {"id": "yeonnam", "name": "연남", "region": "서울 마포", "centerLat": 37.565, "centerLng": 126.9255, "radiusMeters": 600, "adjacentZoneIds": ["hongdae"], "priority": 82, "enabled": true}, {"id": "hapjeong", "name": "합정", "region": "서울 마포", "centerLat": 37.5497, "centerLng": 126.9137, "radiusMeters": 600, "adjacentZoneIds": ["hongdae", "mangwon"], "priority": 78, "enabled": true}, {"id": "mangwon", "name": "망원", "region": "서울 마포", "centerLat": 37.5556, "centerLng": 126.901, "radiusMeters": 600, "adjacentZoneIds": ["hapjeong"], "priority": 76, "enabled": true}, {"id": "seongsu", "name": "성수", "region": "서울 성동", "centerLat": 37.5446, "centerLng": 127.056, "radiusMeters": 800, "adjacentZoneIds": ["seoulforest"], "priority": 84, "enabled": true}, {"id": "seoulforest", "name": "서울숲", "region": "서울 성동", "centerLat": 37.5443, "centerLng": 127.0374, "radiusMeters": 700, "adjacentZoneIds": ["seongsu"], "priority": 74, "enabled": true}, {"id": "jamsil", "name": "잠실", "region": "서울 송파", "centerLat": 37.5133, "centerLng": 127.1, "radiusMeters": 1200, "adjacentZoneIds": [], "priority": 70, "enabled": true}, {"id": "gyeongbok", "name": "경복궁", "region": "서울 종로", "centerLat": 37.5796, "centerLng": 126.977, "radiusMeters": 600, "adjacentZoneIds": ["samcheong", "insadong"], "priority": 75, "enabled": true}, {"id": "samcheong", "name": "삼청동", "region": "서울 종로", "centerLat": 37.5825, "centerLng": 126.982, "radiusMeters": 500, "adjacentZoneIds": ["gyeongbok", "insadong"], "priority": 73, "enabled": true}, {"id": "insadong", "name": "인사동", "region": "서울 종로", "centerLat": 37.574, "centerLng": 126.9853, "radiusMeters": 500, "adjacentZoneIds": ["gyeongbok", "ikseon"], "priority": 72, "enabled": true}, {"id": "ikseon", "name": "익선동", "region": "서울 종로", "centerLat": 37.5726, "centerLng": 126.991, "radiusMeters": 400, "adjacentZoneIds": ["insadong", "euljiro"], "priority": 77, "enabled": true}, {"id": "euljiro", "name": "을지로", "region": "서울 중구", "centerLat": 37.566, "centerLng": 126.991, "radiusMeters": 600, "adjacentZoneIds": ["ikseon", "myeongdong"], "priority": 79, "enabled": true}, {"id": "myeongdong", "name": "명동", "region": "서울 중구", "centerLat": 37.5636, "centerLng": 126.9827, "radiusMeters": 500, "adjacentZoneIds": ["euljiro"], "priority": 68, "enabled": true}, {"id": "itaewon", "name": "이태원", "region": "서울 용산", "centerLat": 37.5344, "centerLng": 126.9946, "radiusMeters": 700, "adjacentZoneIds": [], "priority": 74, "enabled": true}, {"id": "yeonnamgil", "name": "대학로", "region": "서울 종로", "centerLat": 37.582, "centerLng": 127.002, "radiusMeters": 600, "adjacentZoneIds": [], "priority": 66, "enabled": true}, {"id": "gangnam", "name": "강남", "region": "서울 강남", "centerLat": 37.4979, "centerLng": 127.0276, "radiusMeters": 900, "adjacentZoneIds": [], "priority": 72, "enabled": true}, {"id": "garosugil", "name": "가로수길", "region": "서울 강남", "centerLat": 37.5205, "centerLng": 127.023, "radiusMeters": 500, "adjacentZoneIds": ["apgujeong"], "priority": 71, "enabled": true}, {"id": "apgujeong", "name": "압구정", "region": "서울 강남", "centerLat": 37.527, "centerLng": 127.0286, "radiusMeters": 600, "adjacentZoneIds": ["garosugil"], "priority": 69, "enabled": true}, {"id": "yeouido", "name": "여의도", "region": "서울 영등포", "centerLat": 37.5219, "centerLng": 126.9245, "radiusMeters": 1200, "adjacentZoneIds": [], "priority": 65, "enabled": true}, {"id": "mullae", "name": "문래", "region": "서울 영등포", "centerLat": 37.515, "centerLng": 126.8955, "radiusMeters": 500, "adjacentZoneIds": [], "priority": 64, "enabled": true}, {"id": "haeundae", "name": "해운대", "region": "부산 해운대", "centerLat": 35.1587, "centerLng": 129.1604, "radiusMeters": 1200, "adjacentZoneIds": [], "priority": 80, "enabled": true}, {"id": "gwangalli", "name": "광안리", "region": "부산 수영", "centerLat": 35.1532, "centerLng": 129.1186, "radiusMeters": 1000, "adjacentZoneIds": [], "priority": 78, "enabled": true}, {"id": "seomyeon", "name": "서면", "region": "부산 부산진", "centerLat": 35.1577, "centerLng": 129.0594, "radiusMeters": 800, "adjacentZoneIds": ["jeonpo"], "priority": 70, "enabled": true}, {"id": "jeonpo", "name": "전포", "region": "부산 부산진", "centerLat": 35.152, "centerLng": 129.064, "radiusMeters": 500, "adjacentZoneIds": ["seomyeon"], "priority": 68, "enabled": true}, {"id": "nampo", "name": "남포동", "region": "부산 중구", "centerLat": 35.0975, "centerLng": 129.03, "radiusMeters": 700, "adjacentZoneIds": [], "priority": 66, "enabled": true}, {"id": "songdo", "name": "송도", "region": "인천 연수", "centerLat": 37.3826, "centerLng": 126.6438, "radiusMeters": 1500, "adjacentZoneIds": [], "priority": 62, "enabled": true}, {"id": "wolmido", "name": "월미도", "region": "인천 중구", "centerLat": 37.474, "centerLng": 126.597, "radiusMeters": 800, "adjacentZoneIds": [], "priority": 58, "enabled": true}, {"id": "pangyo", "name": "판교", "region": "경기 성남", "centerLat": 37.395, "centerLng": 127.111, "radiusMeters": 900, "adjacentZoneIds": [], "priority": 55, "enabled": true}, {"id": "suwonhaeng", "name": "행궁동", "region": "경기 수원", "centerLat": 37.282, "centerLng": 127.014, "radiusMeters": 700, "adjacentZoneIds": [], "priority": 60, "enabled": true}, {"id": "gangneung", "name": "강릉", "region": "강원 강릉", "centerLat": 37.771, "centerLng": 128.947, "radiusMeters": 1500, "adjacentZoneIds": [], "priority": 64, "enabled": true}, {"id": "sokcho", "name": "속초", "region": "강원 속초", "centerLat": 38.207, "centerLng": 128.591, "radiusMeters": 1500, "adjacentZoneIds": [], "priority": 60, "enabled": true}, {"id": "jeonju", "name": "전주한옥마을", "region": "전북 전주", "centerLat": 35.815, "centerLng": 127.153, "radiusMeters": 900, "adjacentZoneIds": [], "priority": 66, "enabled": true}, {"id": "gyeongju", "name": "황리단길", "region": "경북 경주", "centerLat": 35.836, "centerLng": 129.211, "radiusMeters": 800, "adjacentZoneIds": [], "priority": 64, "enabled": true}, {"id": "yeosu", "name": "여수", "region": "전남 여수", "centerLat": 34.742, "centerLng": 127.734, "radiusMeters": 1500, "adjacentZoneIds": [], "priority": 62, "enabled": true}, {"id": "daegudong", "name": "동성로", "region": "대구 중구", "centerLat": 35.869, "centerLng": 128.596, "radiusMeters": 800, "adjacentZoneIds": [], "priority": 58, "enabled": true}, {"id": "homigot", "name": "호미곶", "region": "경북 포항", "centerLat": 36.076, "centerLng": 129.5667, "radiusMeters": 1500, "adjacentZoneIds": [], "priority": 50, "enabled": true}, {"id": "seogwipo", "name": "서귀포", "region": "제주", "centerLat": 33.2541, "centerLng": 126.5601, "radiusMeters": 3000, "adjacentZoneIds": [], "priority": 55, "enabled": true}, {"id": "hallasan", "name": "한라산", "region": "제주", "centerLat": 33.3617, "centerLng": 126.5292, "radiusMeters": 4000, "adjacentZoneIds": [], "priority": 45, "enabled": true}, {"id": "jejucity", "name": "제주 원도심", "region": "제주", "centerLat": 33.515, "centerLng": 126.524, "radiusMeters": 1500, "adjacentZoneIds": [], "priority": 56, "enabled": true}, {"id": "aewol", "name": "애월", "region": "제주", "centerLat": 33.463, "centerLng": 126.308, "radiusMeters": 2000, "adjacentZoneIds": [], "priority": 54, "enabled": true}, {"id": "seongsan", "name": "성산일출봉", "region": "제주", "centerLat": 33.459, "centerLng": 126.942, "radiusMeters": 2000, "adjacentZoneIds": [], "priority": 52, "enabled": true}];
+const LOCK_STALE_MS = 30000, PRESENCE_STALE_MS = 30000;
+const PALETTE = ["#e6194B","#3cb44b","#4363d8","#f58231","#911eb4","#008080","#f032e6","#bcf60c","#fabed4","#46f0f0"];
+const DEFAULT_COLOR = "#8e8e93";
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const FV = firebase.firestore.FieldValue;
+
+let me = { name:"", mode:"viewer", sid: Math.random().toString(36).slice(2,10), color:null, loggedIn:false };
+let presenceRef=null;
+let drawingActive=false;
+let users = {};                 // name -> color
+let zoneLayers = new Map();     // id -> {data, layer, kind}
+let locks = {};                 // id -> {name, sid, at}
+let fbByZone = {};              // zoneId -> [{by,note}]
+let editing = null, lockHb = null, presenceHb = null;
+const fbLayer = L.layerGroup();
+
+// ---- 유틸 ----
+function haversine(a,b,c,d){const R=6371000,r=x=>x*Math.PI/180;const dLat=r(c-a),dLng=r(d-b);const t=Math.sin(dLat/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dLng/2)**2;return 2*R*Math.asin(Math.min(1,Math.sqrt(t)));}
+function pip(lat,lng,ring){let ins=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const ai=ring[i],aj=ring[j];if((ai[0]>lat)!==(aj[0]>lat)){const x=ai[1]+(lat-ai[0])/(aj[0]-ai[0])*(aj[1]-ai[1]);if(lng<x)ins=!ins;}}return ins;}
+function centroid(r){let x=0,y=0;r.forEach(p=>{x+=p[0];y+=p[1]});return[x/r.length,y/r.length];}
+function round6(v){return Math.round(v*1e6)/1e6;}
+function ringOf(zl){return zl.layer.getLatLngs()[0].map(ll=>[ll.lat,ll.lng]);}
+function sanitizeId(s){return s.replace(/[^A-Za-z0-9_-]/g,'');}
+function validId(s){return /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(s);}
+function userColor(name){return (name&&users[name])?users[name]:DEFAULT_COLOR;}
+function setBusy(t){document.getElementById('busyText').textContent=t;document.getElementById('busy').classList.add('on');}
+function clearBusy(){document.getElementById('busy').classList.remove('on');}
+async function reverseRegion(lat,lng){try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=14&lat=${lat}&lon=${lng}`,{headers:{'Accept-Language':'ko'}});const a=(await r.json()).address||{};const city=a.city||a.town||a.county||a.province||a.state||'';const dist=a.borough||a.city_district||a.suburb||a.quarter||a.neighbourhood||'';return [city,dist].filter(Boolean).join(' ').trim();}catch(e){return '';}}
+
+// ---- 지도 (최대 축소 제한: 전세계 한눈) ----
+const map=L.map('map',{zoomControl:true,minZoom:2,maxBounds:[[-85,-180],[85,180]],maxBoundsViscosity:1}).setView([37.5563,126.9237],12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,minZoom:2,noWrap:true,attribution:'© OpenStreetMap'}).addTo(map);
+fbLayer.addTo(map);
+map.pm.setGlobalOptions({tooltips:false});
+map.on('move',refreshReadout);
+map.on('zoomend moveend',()=>requestAnimationFrame(declutterLabels));
+
+// 라벨 충돌 정리: 겹치면 priority 높은 권역 이름만 남기고 나머지 숨김(확대하면 복원).
+function declutterLabels(){
+  const bounds=map.getBounds();const placed=[];
+  const arr=[...zoneLayers.entries()].sort((a,b)=>(b[1].data.radiusMeters||0)-(a[1].data.radiusMeters||0));
+  for(const[id,zl]of arr){
+    const tt=zl.layer.getTooltip();if(!tt)continue;const el=tt.getElement();if(!el)continue;
+    const c=zl.kind==='polygon'?centroid(ringOf(zl)):[zl.data.centerLat,zl.data.centerLng];
+    if(!bounds.contains(L.latLng(c[0],c[1]))){el.style.display='none';continue;}
+    const pt=map.latLngToContainerPoint(L.latLng(c[0],c[1]));
+    const w=Math.max(24,(zl.data.name||'').length*13),h=15;
+    const box={x:pt.x-w/2,y:pt.y-h/2,w,h};
+    const hit=placed.some(p=>!(box.x+box.w<p.x||p.x+p.w<box.x||box.y+box.h<p.y||p.y+p.h<box.y));
+    if(hit){el.style.display='none';}else{el.style.display='';placed.push(box);}
+  }
+}
+
+function lockState(id){const l=locks[id];if(!l)return null;if(Date.now()-l.at>LOCK_STALE_MS)return null;return l;}
+function isLockedByOther(id){const l=lockState(id);return l&&l.sid!==me.sid;}
+
+function styleLayer(id,zl){const z=zl.data;
+  let col=userColor(z.createdBy);
+  if(editing===id)col='#0a84ff';else if(isLockedByOther(id))col='#e0361f';else if(z.enabled===false)col='#9a9aa2';
+  zl.layer.setStyle({color:col,weight:editing===id?3:2,fillColor:userColor(z.createdBy),fillOpacity:z.enabled===false?0.04:0.14,dashArray:z.enabled===false?'4 4':null});}
+
+function makeLayer(id,z){
+  let layer,kind;
+  if(z.polygon&&z.polygon.length>=3){kind='polygon';layer=L.polygon(z.polygon.map(p=>[p.lat,p.lng])).addTo(map);}
+  else{kind='circle';layer=L.circle([z.centerLat,z.centerLng],{radius:z.radiusMeters||300}).addTo(map);}
+  const zl={data:z,layer,kind};layer.zl=zl;
+  layer.bindTooltip(z.name,{permanent:true,direction:'center',className:'zoneLbl'});
+  layer.on('click',()=>openZonePopup(id,zl));
+  zoneLayers.set(id,zl);styleLayer(id,zl);
+  return zl;
+}
+function removeLayer(id){const zl=zoneLayers.get(id);if(zl){zl.layer.remove();zoneLayers.delete(id);}}
+function applyDoc(id,data){if(editing===id)return;removeLayer(id);makeLayer(id,data);}
+function recolorAll(){for(const[id,zl]of zoneLayers)styleLayer(id,zl);}
+
+// ---- 팝업 ----
+let popup=L.popup();
+function fbListHtml(id){const arr=fbByZone[id]||[];if(!arr.length)return '';return '<hr style="margin:6px 0"><b>피드백 '+arr.length+'</b><br>'+arr.map(f=>`· ${f.note} <span style="color:#888">(${f.by||'익명'})</span>`).join('<br>');}
+function openZonePopup(id,zl){
+  const z=zl.data;const l=lockState(id);
+  let html=`<b>${z.name}</b> <span style="color:#888">${z.region||''}</span><br><code>${id}</code> · ${z.enabled===false?'off':'on'} · ${zl.kind}`;
+  if(z.createdBy)html+=` · <span style="color:${userColor(z.createdBy)}">●</span>${z.createdBy}`;
+  html+='<br>';
+  if(l&&l.sid!==me.sid)html+=`🔒 <b>${l.name}</b> 편집 중 `;
+  else if(me.mode!=='viewer')html+=`<button onclick="window._edit('${id}')">편집</button> `;
+  html+=`<button onclick="window._fb('${id}')">피드백</button>`;
+  if(zl.kind==='circle'&&me.mode!=='viewer'&&!(l&&l.sid!==me.sid))html+=` <button onclick="window._toPoly('${id}')">다각형화</button>`;
+  html+=fbListHtml(id);
+  const c=zl.kind==='polygon'?centroid(ringOf(zl)):[z.centerLat,z.centerLng];
+  popup.setLatLng(c).setContent(html).openOn(map);
+}
+
+// ---- 피드백 ----
+function ensureName(){if(!me.name){const n=prompt('이름(피드백에 표시):');if(!n)return false;me.name=n.trim();updateWho();}return !!me.name;}
+window._fb=(id)=>{if(!ensureName())return;const zl=zoneLayers.get(id);const n=prompt(`"${zl.data.name}" 피드백:`);if(n){const c=zl.kind==='polygon'?centroid(ringOf(zl)):[zl.data.centerLat,zl.data.centerLng];db.collection('zoneFeedback').add({zoneId:id,lat:c[0],lng:c[1],by:me.name,note:n,at:FV.serverTimestamp()});map.closePopup();}};
+function feedbackAt(latlng){if(!ensureName())return;const n=prompt('이 위치 피드백:');if(n)db.collection('zoneFeedback').add({zoneId:null,lat:latlng.lat,lng:latlng.lng,by:me.name,note:n,at:FV.serverTimestamp()});}
+map.on('click',(e)=>{if(drawingActive||editing)return; // 그리기/편집 중엔 피드백 클릭 끔
+  const m=judge(e.latlng.lat,e.latlng.lng);if(m.length)return; // 권역 안이면 무시(권역 클릭이 처리)
+  L.popup().setLatLng(e.latlng).setContent('<button onclick="window._fbHere()">여기에 피드백</button>').openOn(map);window.__fbLatLng=e.latlng;});
+window._fbHere=()=>{map.closePopup();if(window.__fbLatLng)feedbackAt(window.__fbLatLng);};
+
+function renderFeedback(docs){
+  fbLayer.clearLayers();fbByZone={};
+  const locs=[];
+  docs.forEach(d=>{if(d.zoneId){(fbByZone[d.zoneId]=fbByZone[d.zoneId]||[]).push(d);}else if(typeof d.lat==='number'){locs.push(d);}});
+  // 권역 밖(위치) 피드백만 핀으로 표시
+  locs.forEach(d=>{const icon=L.divIcon({className:'',html:'<div class="fbPin"><span>💬</span></div>',iconSize:[24,24],iconAnchor:[12,24]});
+    L.marker([d.lat,d.lng],{icon,zIndexOffset:1000}).bindPopup(`📍 <b>${d.note}</b><br><span style="color:#888">${d.by||'익명'}</span>`).addTo(fbLayer);});
+  updateZoneLabels();   // 권역 피드백은 이름 라벨에 합쳐 표시(겹침 방지)
+}
+function updateZoneLabels(){
+  for(const[id,zl]of zoneLayers){
+    const n=fbByZone[id]?fbByZone[id].length:0;
+    const label=n?`${zl.data.name} <b style="color:#ff2d55">💬${n}</b>`:zl.data.name;
+    const tt=zl.layer.getTooltip();if(tt)zl.layer.setTooltipContent(label);
+  }
+}
+
+// ---- 편집 잠금 ----
+window._edit=async(id)=>{
+  if(me.mode==='viewer')return;
+  if(editing){alert('한 번에 하나만 편집할 수 있어요. 먼저 저장/취소하세요.');return;}
+  const ref=db.collection('zoneLocks').doc(id);
+  setBusy('편집 준비 중…');
+  try{
+    await db.runTransaction(async tx=>{const d=await tx.get(ref);const now=Date.now();if(d.exists){const l=d.data();const at=l.at&&l.at.toMillis?l.at.toMillis():now;if(l.sid!==me.sid&&(now-at)<LOCK_STALE_MS)throw new Error('LOCKED');}tx.set(ref,{name:me.name,sid:me.sid,at:FV.serverTimestamp()});});
+  }catch(e){clearBusy();alert('다른 사람이 편집 중이에요.');return;}
+  editing=id;map.closePopup();
+  const zl=zoneLayers.get(id);if(zl.kind==='circle')convertToPolygon(id,zl);
+  const ezl=zoneLayers.get(id);ezl.layer.pm.enable({allowSelfIntersection:false});styleLayer(id,ezl);openEditBar(id,ezl);
+  lockHb=setInterval(()=>ref.update({at:FV.serverTimestamp()}).catch(()=>{}),8000);
+  clearBusy();
+};
+function stopLockHb(){if(lockHb){clearInterval(lockHb);lockHb=null;}}
+function stopEditingUI(id){const zl=zoneLayers.get(id);if(zl&&zl.layer.pm)zl.layer.pm.disable();document.getElementById('editbar').classList.remove('on');}
+function convertToPolygon(id,zl){const z=zl.data;if(zl.kind==='polygon')return;const n=8,ring=[];for(let i=0;i<n;i++){const a=2*Math.PI*i/n;const dLat=(z.radiusMeters*Math.cos(a))/111320;const dLng=(z.radiusMeters*Math.sin(a))/(111320*Math.cos(z.centerLat*Math.PI/180));ring.push([z.centerLat+dLat,z.centerLng+dLng]);}removeLayer(id);makeLayer(id,{...z,polygon:ring.map(p=>({lat:p[0],lng:p[1]}))});}
+
+function openEditBar(id,zl){const z=zl.data;
+  const idIn=document.getElementById('eb_id');idIn.value=id;idIn.oninput=()=>{const p=idIn.selectionStart;idIn.value=sanitizeId(idIn.value);idIn.setSelectionRange(p,p);};
+  document.getElementById('eb_name').value=z.name||'';document.getElementById('eb_region').value=z.region||'';document.getElementById('eb_enabled').checked=z.enabled!==false;
+  document.getElementById('eb_delete').style.display=(me.mode==='admin')?'':'none';
+  document.getElementById('editbar').classList.add('on');
+  document.getElementById('eb_save').onclick=()=>saveEdit(id);document.getElementById('eb_cancel').onclick=()=>cancelEdit(id);document.getElementById('eb_delete').onclick=()=>deleteZone(id);
+}
+function serialize(id){const zl=zoneLayers.get(id);
+  const base={name:document.getElementById('eb_name').value.trim()||zl.data.name,region:document.getElementById('eb_region').value.trim(),enabled:document.getElementById('eb_enabled').checked,adjacentZoneIds:zl.data.adjacentZoneIds||[],createdBy:zl.data.createdBy||me.name};
+  if(zl.kind==='polygon'){const ring=ringOf(zl);const c=centroid(ring);base.polygon=ring.map(p=>({lat:round6(p[0]),lng:round6(p[1])}));base.centerLat=round6(c[0]);base.centerLng=round6(c[1]);base.radiusMeters=Math.round(Math.max(...ring.map(p=>haversine(c[0],c[1],p[0],p[1]))));}
+  else{base.centerLat=zl.data.centerLat;base.centerLng=zl.data.centerLng;base.radiusMeters=zl.data.radiusMeters;}
+  return base;
+}
+async function saveEdit(id){
+  const newId=document.getElementById('eb_id').value.trim();
+  if(!validId(newId)){alert('id 는 영문/숫자/-/_ 만, 영문·숫자로 시작해야 해요.');return;}
+  if(newId!==id&&zoneLayers.has(newId)){alert('이미 있는 id 예요.');return;}
+  const data=serialize(id);
+  setBusy('저장 중…');
+  try{const ops=[db.collection('zones').doc(newId).set(data),db.collection('zoneLocks').doc(id).delete()];if(newId!==id)ops.push(db.collection('zones').doc(id).delete());await Promise.all(ops);}
+  catch(e){clearBusy();alert('저장 실패: '+e.message);return;}
+  stopLockHb();stopEditingUI(id);if(newId!==id)removeLayer(id);editing=null;applyDoc(newId,data);clearBusy();
+}
+async function cancelEdit(id){
+  if(!confirm('편집을 취소할까요? 저장하지 않은 변경 내용이 사라집니다.'))return;
+  setBusy('취소 중…');stopLockHb();stopEditingUI(id);
+  try{await db.collection('zoneLocks').doc(id).delete();}catch(e){}
+  editing=null;
+  try{const doc=await db.collection('zones').doc(id).get();if(doc.exists)applyDoc(id,doc.data());else removeLayer(id);}catch(e){}
+  clearBusy();
+}
+async function deleteZone(id){
+  if(me.mode!=='admin'){alert('삭제는 관리자만 가능해요.');return;}
+  if(!confirm('이 권역을 삭제할까요? 앱에도 반영됩니다.'))return;
+  setBusy('삭제 중…');stopLockHb();stopEditingUI(id);editing=null;
+  try{await Promise.all([db.collection('zones').doc(id).delete(),db.collection('zoneLocks').doc(id).delete()]);}catch(e){alert('삭제 실패: '+e.message);}
+  removeLayer(id);clearBusy();
+}
+window._toPoly=(id)=>{const zl=zoneLayers.get(id);convertToPolygon(id,zl);map.closePopup();alert('다각형으로 바꿨어요. "편집"으로 다듬고 저장하세요.');};
+
+// ---- 새 다각형 ----
+const btnDraw=document.getElementById('btnDraw');
+btnDraw.onclick=()=>{if(me.mode==='viewer')return;if(drawingActive)map.pm.disableDraw();else map.pm.enableDraw('Polygon');};
+map.on('pm:drawstart',()=>{drawingActive=true;btnDraw.textContent='✕ 그리기 취소';document.getElementById('drawBanner').classList.add('on');map.getContainer().classList.add('drawing');});
+map.on('pm:drawend',()=>{drawingActive=false;btnDraw.textContent='＋ 다각형 그리기';document.getElementById('drawBanner').classList.remove('on');map.getContainer().classList.remove('drawing');});
+document.addEventListener('keydown',(e)=>{if(!drawingActive)return;if(e.key==='Escape'){map.pm.disableDraw();}else if(e.key==='Backspace'){e.preventDefault();try{const d=map.pm.Draw&&map.pm.Draw.Polygon;if(d&&d._removeLastVertex)d._removeLastVertex();}catch(err){}}});
+function openZoneForm(prefill,onOk){const bg=document.createElement('div');bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal"><h2>새 권역 정보</h2>
+    <div class="field">id (영문/숫자/-/_)<input id="zf_id" placeholder="e.g. mangwon2" value="${prefill.id||''}"></div>
+    <div class="field">이름<input id="zf_name" placeholder="예: 망원2" value="${prefill.name||''}"></div>
+    <div class="field">지역(자동 추정, 수정 가능)<input id="zf_region" value="${prefill.region||''}"></div>
+    <div class="row" style="margin-top:6px"><button class="primary" id="zf_ok">추가</button><button class="ghost" id="zf_cancel">취소</button></div></div>`;
+  document.body.appendChild(bg);const idIn=bg.querySelector('#zf_id');idIn.addEventListener('input',()=>{const p=idIn.selectionStart;idIn.value=sanitizeId(idIn.value);idIn.setSelectionRange(p,p);});
+  const close=()=>bg.remove();bg.querySelector('#zf_cancel').onclick=()=>{close();onOk(null);};bg.onclick=e=>{if(e.target===bg){close();onOk(null);}};
+  bg.querySelector('#zf_ok').onclick=()=>{const id=idIn.value.trim(),name=bg.querySelector('#zf_name').value.trim();if(!validId(id)){alert('id 는 영문/숫자/-/_ 만.');return;}if(!name){alert('이름을 입력하세요.');return;}if(zoneLayers.has(id)){alert('이미 있는 id 예요.');return;}onOk({id,name,region:bg.querySelector('#zf_region').value.trim()});close();};
+}
+map.on('pm:create',async e=>{
+  if(e.shape!=='Polygon'||me.mode==='viewer'){e.layer.remove();return;}
+  map.pm.disableDraw();   // 완성 후 그리기 모드 종료(버튼/배너 원복, 클릭 정상화)
+  const layer=e.layer;const ring=layer.getLatLngs()[0].map(ll=>[ll.lat,ll.lng]);layer.remove();
+  const c=centroid(ring);setBusy('지역 확인 중…');const region=await reverseRegion(c[0],c[1]);clearBusy();
+  openZoneForm({id:'',name:'',region},(f)=>{if(!f)return;setBusy('생성 중…');
+    const data={name:f.name,region:f.region,enabled:true,adjacentZoneIds:[],createdBy:me.name,polygon:ring.map(p=>({lat:round6(p[0]),lng:round6(p[1])})),centerLat:round6(c[0]),centerLng:round6(c[1]),radiusMeters:Math.round(Math.max(...ring.map(p=>haversine(c[0],c[1],p[0],p[1]))))};
+    db.collection('zones').doc(f.id).set(data).then(()=>clearBusy()).catch(err=>{clearBusy();alert('생성 실패: '+err.message);});});
+});
+
+// ---- 이동 / 내보내기 / seed ----
+document.getElementById('btnFly').onclick=async()=>{const q=prompt('이동할 장소/주소:');if(!q)return;try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,{headers:{'Accept-Language':'ko'}});const j=await r.json();if(j[0])map.setView([+j[0].lat,+j[0].lon],15);else alert('결과 없음');}catch(e){alert('검색 실패: '+e.message);}};
+document.getElementById('btnExport').onclick=()=>{const out=[...zoneLayers.entries()].map(([id,zl])=>{const z=zl.data;const o={id,name:z.name,region:z.region||'',centerLat:z.centerLat,centerLng:z.centerLng,radiusMeters:z.radiusMeters,adjacentZoneIds:z.adjacentZoneIds||[],priority:z.priority||60,enabled:z.enabled!==false};if(z.polygon)o.polygon=z.polygon.map(p=>[p.lat,p.lng]);return o;});const b=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='location_zones.seed.json';a.click();};
+document.getElementById('btnSeed').onclick=async()=>{if(!confirm('기본 권역 '+SEED_ZONES.length+'개를 올릴까요?'))return;setBusy('업로드 중…');const batch=db.batch();SEED_ZONES.forEach(z=>{const{id,...rest}=z;batch.set(db.collection('zones').doc(id),rest);});try{await batch.commit();}catch(e){alert('실패: '+e.message);}clearBusy();};
+
+// ---- 판정/읽기 ----
+function judge(lat,lng){const m=[];for(const[id,zl]of zoneLayers){if(zl.data.enabled===false)continue;if(zl.kind==='polygon'){const ring=ringOf(zl);if(ring.length>=3&&pip(lat,lng,ring))m.push({id,zl,dist:haversine(lat,lng,...centroid(ring))});}else{const d=haversine(lat,lng,zl.data.centerLat,zl.data.centerLng);if(d<=zl.data.radiusMeters)m.push({id,zl,dist:d});}}m.sort((a,b)=>a.dist-b.dist);return m;}
+function refreshReadout(){const c=map.getCenter();const m=judge(c.lat,c.lng);let h=`<div><span class="muted">화면 중앙</span> <code>${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}</code></div>`;if(m.length){h+=`<div class="zone">📍 ${m[0].zl.data.name} <span class="muted">${m[0].zl.data.region||''}</span></div>`;}else h+=`<div class="zone">권역 밖</div>`;document.getElementById('readout').innerHTML=h;}
+
+// ---- 실시간 구독 ----
+function startListeners(){
+  db.collection('zoneEditorUsers').onSnapshot(s=>{users={};s.forEach(d=>{users[d.id]=(d.data().color)||DEFAULT_COLOR;});recolorAll();if(me.name&&users[me.name]){me.color=users[me.name];const mc=document.getElementById('myColor');mc.value=me.color;}},e=>console.error('users',e));
+  db.collection('zones').onSnapshot(s=>{s.docChanges().forEach(ch=>{if(ch.type==='removed')removeLayer(ch.doc.id);else applyDoc(ch.doc.id,ch.doc.data());});document.getElementById('btnSeed').style.display=(me.mode==='admin'&&zoneLayers.size===0)?'':'none';refreshReadout();updateZoneLabels();setTimeout(declutterLabels,60);},e=>console.error('zones',e));
+  db.collection('zoneLocks').onSnapshot(s=>{locks={};s.forEach(d=>{const l=d.data();locks[d.id]={name:l.name,sid:l.sid,at:l.at&&l.at.toMillis?l.at.toMillis():Date.now()};});for(const[id,zl]of zoneLayers)styleLayer(id,zl);},e=>console.error('locks',e));
+  db.collection('zoneFeedback').onSnapshot(s=>{const docs=[];s.forEach(d=>docs.push(d.data()));renderFeedback(docs);},e=>console.error('fb',e));
+  db.collection('zoneEditorPresence').onSnapshot(s=>{const now=Date.now();const u=[];s.forEach(d=>{const p=d.data();const at=p.at&&p.at.toMillis?p.at.toMillis():now;if(now-at<PRESENCE_STALE_MS)u.push(p);});document.getElementById('online').innerHTML='접속 '+u.length+'명: '+u.map(x=>`<b style="color:${userColor(x.name)}">${x.name||'익명'}</b>`).join(', ');},e=>console.error('pres',e));
+}
+function sendPresence(){if(presenceRef)presenceRef.set({name:me.name,mode:me.mode,at:FV.serverTimestamp()}).catch(()=>{});}
+function startPresence(){presenceRef=db.collection('zoneEditorPresence').doc(me.sid);sendPresence();presenceHb=setInterval(sendPresence,10000);window.addEventListener('beforeunload',()=>{presenceRef.delete();if(editing)db.collection('zoneLocks').doc(editing).delete();});}
+
+// ---- 로그인/모드 ----
+function updateWho(){document.getElementById('whoName').textContent=me.name?`${me.name}`:'둘러보는 중';const badge=document.getElementById('mode');badge.textContent=me.mode==='admin'?'관리자':me.mode==='friend'?'친구':'뷰어';badge.className='modeBadge '+me.mode;document.getElementById('writeRow').style.display=me.mode==='viewer'?'none':'';document.getElementById('myColor').style.display=me.mode==='viewer'?'none':'';document.getElementById('btnLogin').textContent=me.loggedIn?'로그아웃':'로그인';document.getElementById('hint').textContent=me.mode==='viewer'?'둘러보기: 권역 밖을 클릭해 피드백을 남길 수 있어요. 편집하려면 로그인하세요.':'권역 클릭 → 편집(잠금) → 꼭짓점 드래그 후 저장. 새 권역은 "다각형 그리기".';}
+function logout(){if(editing){stopLockHb();stopEditingUI(editing);db.collection('zoneLocks').doc(editing).delete().catch(()=>{});editing=null;}me.mode='viewer';me.name='';me.loggedIn=false;me.color=null;document.getElementById('myColor').style.display='none';updateWho();sendPresence();}
+function showLogin(){document.getElementById('login').style.display='flex';document.getElementById('panel').style.display='none';}
+function hideLogin(){document.getElementById('login').style.display='none';document.getElementById('panel').style.display='';}
+document.getElementById('btnLogin').onclick=()=>{if(me.loggedIn)logout();else showLogin();};
+document.getElementById('in_skip').onclick=()=>{hideLogin();};
+document.getElementById('in_go').onclick=async()=>{
+  const name=document.getElementById('in_name').value.trim();const pw=document.getElementById('in_pw').value;
+  me.mode=pw===ADMIN_PW?'admin':pw===FRIEND_PW?'friend':'viewer';
+  if(me.mode==='admin'&&!ADMIN_NAMES.includes(name)){alert('관리자 이름이 아니에요. 등록된 이름(예: 민성)으로 로그인하세요.');return;}
+  if(me.mode!=='viewer'&&!name){alert('편집하려면 이름이 필요해요.');return;}
+  if(name)me.name=name;
+  me.loggedIn=(me.mode!=='viewer'||me.name!=='');
+  hideLogin();updateWho();sendPresence();
+  if(me.mode!=='viewer'){
+    // 사용자 색상 준비(없으면 팔레트에서 배정)
+    if(!users[me.name]){const color=PALETTE[Object.keys(users).length%PALETTE.length];try{await db.collection('zoneEditorUsers').doc(me.name).set({color,role:me.mode},{merge:true});}catch(e){}me.color=color;}
+    else me.color=users[me.name];
+    const mc=document.getElementById('myColor');mc.value=me.color||DEFAULT_COLOR;
+  }
+};
+document.getElementById('myColor').onchange=(e)=>{if(me.mode==='viewer'||!me.name)return;me.color=e.target.value;db.collection('zoneEditorUsers').doc(me.name).set({color:me.color},{merge:true}).catch(()=>{});};
+document.getElementById('in_name').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('in_pw').focus();});
+document.getElementById('in_pw').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('in_go').click();});
+
+// ---- 시작: 익명 로그인 후 바로 뷰어로 열림 ----
+(async()=>{
+  try{await auth.setPersistence(firebase.auth.Auth.Persistence.NONE);await auth.signInAnonymously();}catch(e){alert('접속 실패: '+e.message);return;}
+  // 로그인 창은 사용자가 '시작' 또는 '그냥 둘러보기'를 누를 때까지 유지(자동으로 닫지 않음).
+  updateWho();startListeners();startPresence();refreshReadout();
+})();
+</script>
+</body>
+</html>
