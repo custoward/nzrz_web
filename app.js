@@ -57,7 +57,8 @@
     enterDelay: 1800,  // 첫 부딪힘 뒤 화살표가 나오기까지(ms)
 
     // 부딪힌 자리에서 퍼지는 파동
-    waveRings: 3,      // 한 번에 내보내는 고리 수
+    waveRings: 3,      // 한 번에 내보내는 고리의 최대 개수. 약하게 부딪히면
+                       // 하나만 나온다 — 매번 셋이면 규칙이 눈에 보인다
     waveMin: 130,      // 살짝 스쳤을 때 퍼지는 반지름(px)
     waveMax: 540,      // 세게 부딪혔을 때
     waveSpeed: 130     // 퍼지는 속도(px/초). 세기는 얼마나 멀리 가느냐를
@@ -506,24 +507,34 @@
     var vel = Math.pow(Math.min(closing / CFG.hitFull, 1), 1.4);
     var span = CFG.waveMin + (CFG.waveMax - CFG.waveMin) * vel;
 
-    // 고리 하나로는 파문이 안 된다. 그렇다고 같은 속도로 보내면 세 개가
-    // 한 덩어리로 붙어 다녀 큰 고리 하나처럼 보인다. 뒤 고리일수록 느리게
-    // 보내 갈수록 벌어지게 한다 — 물결도 파장마다 속도가 달라 그렇게 흩어진다.
-    for (var i = 0; i < CFG.waveRings; i++) {
-      emit(x, y,
-           span * (1 - i * 0.09),               // 뒤 고리는 조금 덜 간다
-           vel * (1 - i * 0.30),                // 조금 여리게
-           i * 0.08,                            // 조금 늦게 출발
-           CFG.waveSpeed * (1 - i * 0.17));     // 그리고 더 느리게 간다
+    // 고리 하나로는 파문이 안 되고, 매번 똑같이 셋이면 규칙이 보인다.
+    // 개수를 세기에 맡긴다 — 살짝 스치면 하나, 세게 부딪히면 셋.
+    var rings = 1 + Math.round(vel * (CFG.waveRings - 1));
+
+    // 뒤 고리일수록 느리게 보내 갈수록 벌어지게 한다. 물결도 파장마다
+    // 속도가 달라 그렇게 흩어진다. 거기에 매번 조금씩 어긋나게 흔들어준다 —
+    // 자로 잰 듯 같은 값이 반복되는 게 «인위적»으로 보이는 원인이다.
+    for (var i = 0; i < rings; i++) {
+      emit(x + rand(-7, 7), y + rand(-7, 7),
+           span * (1 - i * 0.09) * rand(0.86, 1.14),
+           vel * (1 - i * 0.30) * rand(0.8, 1.2),
+           i * rand(0.05, 0.14),
+           CFG.waveSpeed * (1 - i * 0.17) * rand(0.88, 1.12),
+           rand(1.06, 1.34),                 // 납작한 정도
+           rand(-16, 16));                   // 기울기
     }
   }
 
-  function emit(x, y, radius, strength, delay, speed) {
+  function emit(x, y, radius, strength, delay, speed, flat, tilt) {
     var el = document.createElement('div');
     el.className = 'wave';
     el.style.left = x + 'px';
     el.style.top = y + 'px';
-    el.style.width = el.style.height = radius * 2 + 'px';
+    // 정원이 아니다. 부딪힘은 옆으로 미는 힘이라 그 방향으로 더 퍼진다.
+    // 넓힌 만큼 눌러서 크기 자체는 그대로 둔다.
+    el.style.width = (radius * 2 * flat).toFixed(1) + 'px';
+    el.style.height = (radius * 2 / flat).toFixed(1) + 'px';
+    el.style.setProperty('--tilt', tilt.toFixed(1) + 'deg');
     // 띠는 넓어서 실선보다 훨씬 무겁게 보인다. 여기 있는 줄 모르고
     // 지나쳤다가 «방금 뭐가 지나갔나» 싶은 정도까지 낮춘다.
     el.style.setProperty('--peak', (0.035 + 0.13 * strength).toFixed(3));

@@ -149,7 +149,7 @@ body {
       rgba(0, 0, 0, 0)   100%);
   opacity: 0;
   /* 지름을 정해두고 0에서 1까지 키운다. 좌표는 고리의 중심이다. */
-  transform: translate(-50%, -50%) scale(0);
+  transform: translate(-50%, -50%) rotate(var(--tilt, 0deg)) scale(0);
   animation-name: wave-out;
   /* 파동은 일정한 속도로 퍼지고 진폭만 잦아든다. 이징을 주면
      순식간에 커졌다 멈추는 원이 되지 파동으로 안 보인다. */
@@ -163,13 +163,13 @@ body {
    거리에 반비례해서 떨어진다 — 초반에 확 죽고 뒤로 갈수록 완만하다.
    둘 다 선형이면 파동이 아니라 균일하게 커지는 원으로 읽힌다. */
 @keyframes wave-out {
-  from { transform: translate(-50%, -50%) scale(0);    opacity: var(--peak); }
-  8%   { transform: translate(-50%, -50%) scale(.08);  opacity: calc(var(--peak) * .74); }
-  20%  { transform: translate(-50%, -50%) scale(.2);   opacity: calc(var(--peak) * .52); }
-  36%  { transform: translate(-50%, -50%) scale(.36);  opacity: calc(var(--peak) * .36); }
-  56%  { transform: translate(-50%, -50%) scale(.56);  opacity: calc(var(--peak) * .24); }
-  78%  { transform: translate(-50%, -50%) scale(.78);  opacity: calc(var(--peak) * .13); }
-  to   { transform: translate(-50%, -50%) scale(1);    opacity: 0; }
+  from { transform: translate(-50%, -50%) rotate(var(--tilt, 0deg)) scale(0);    opacity: var(--peak); }
+  8%   { transform: translate(-50%, -50%) rotate(var(--tilt, 0deg)) scale(.08);  opacity: calc(var(--peak) * .74); }
+  20%  { transform: translate(-50%, -50%) rotate(var(--tilt, 0deg)) scale(.2);   opacity: calc(var(--peak) * .52); }
+  36%  { transform: translate(-50%, -50%) rotate(var(--tilt, 0deg)) scale(.36);  opacity: calc(var(--peak) * .36); }
+  56%  { transform: translate(-50%, -50%) rotate(var(--tilt, 0deg)) scale(.56);  opacity: calc(var(--peak) * .24); }
+  78%  { transform: translate(-50%, -50%) rotate(var(--tilt, 0deg)) scale(.78);  opacity: calc(var(--peak) * .13); }
+  to   { transform: translate(-50%, -50%) rotate(var(--tilt, 0deg)) scale(1);    opacity: 0; }
 }
 
 /* 움직임을 원치 않는 사람에게는 그리지 않는다 */
