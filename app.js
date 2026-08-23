@@ -24,7 +24,10 @@
     tiltGain: 0.85,    // 기기가 1도 기울 때 획이 따라 눕는 각도
     tiltMax: 11,       // 아무리 기울여도 이보다 더 눕지 않는다(도).
                        // max(15~19)보다 낮게 둬야 흔들릴 여지가 남는다
-    tiltEase: 0.14,    // 기울기를 따라가는 속도. 손떨림을 걷어낸다
+    tiltRate: 12,      // 매달린 각도가 옮겨가는 최대 속도(도/초).
+                       // 진자 주기(0.8~1s)보다 느리게 움직여야 획이 따라오기만
+                       // 하고 안 튄다. 지수완화로는 초반이 계단이라 크게 튀었다
+    tiltDead: 1.2,     // 이보다 작은 차이는 손떨림으로 보고 무시(도)
 
     // 기기 흔들기
     shakeDrive: 240,   // 방향이 있는 직접 구동 — 기울이면 그쪽으로 쏠린다
@@ -293,7 +296,8 @@
   // 로도 잴 수 있지만 iOS와 안드로이드가 부호를 반대로 줘서, 규격이 같은
   // gamma 쪽이 안전하다.
 
-  var hang = 0;   // 획이 쉬어야 할 각도(도). 0이면 화면 아래쪽.
+  var hang = 0;         // 획이 쉬어야 할 각도(도). 0이면 화면 아래쪽.
+  var lastOrientT = 0;
 
   /** 이 획이 쉬어야 할 각도. 막대는 걸이라 기울여도 제자리다. */
   function equilibrium(p) {
@@ -309,9 +313,22 @@
     if (want > CFG.tiltMax) want = CFG.tiltMax;
     if (want < -CFG.tiltMax) want = -CFG.tiltMax;
 
-    var next = hang + (want - hang) * CFG.tiltEase;
-    if (Math.abs(next - hang) < 0.02) return;
-    hang = next;
+    // 손에 들고 있으면 gamma 가 늘 1~2도씩 떨린다. 그걸 그대로 따라가면
+    // 획이 영영 안 멈추고 잘게 통통거린다. 이만큼은 벌어져야 움직인다.
+    var diff = want - hang;
+    if (Math.abs(diff) < CFG.tiltDead) return;
+
+    // interval 은 기기마다 단위가 달라 못 믿는다. 직접 잰다.
+    var now = e.timeStamp || performance.now();
+    var dt = lastOrientT ? (now - lastOrientT) / 1000 : 0.016;
+    lastOrientT = now;
+    if (!(dt > 0.002 && dt < 0.2)) dt = 0.016;
+
+    // 한 번에 옮기지 않고 초당 몇 도로 끌고 간다. 평형이 획보다 느리게
+    // 움직이면 획은 매달려 따라오기만 한다 — 튀는 건 평형이 계단처럼
+    // 건너뛸 때 생긴다.
+    var step = CFG.tiltRate * dt;
+    hang += Math.abs(diff) <= step ? diff : (diff > 0 ? step : -step);
 
     if (D.on) D.set('tilt', 'gamma ' + e.gamma.toFixed(1) + '° → 매달림 ' + hang.toFixed(1) + '°');
     start();
