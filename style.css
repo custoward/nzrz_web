@@ -72,9 +72,11 @@ body {
   color: #000;
 }
 
+/* 움직임이 보이려면 커야 한다. 물리는 viewBox 단위라 각도는 그대로고,
+   화면에서 커진 만큼 같은 각도가 크게 보인다.
+   vw 가 아니라 vmin 인 이유: 가로로 누운 폰에서 vw 로 잡으면 높이를 넘는다. */
 #mark {
-  width: 180px;
-  max-width: 40vw;
+  width: min(320px, 62vmin);
   height: auto;
   overflow: visible;
 }
@@ -98,10 +100,10 @@ body {
   transform-origin: 17.5% 0%;
 }
 
-/* 커서가 지나가는 걸 감지하는 영역. 로고보다 넉넉해야
-   스쳐 지나가는 것만으로도 반응한다. */
+/* 커서가 지나가는 걸 감지하는 영역. 로고보다 넉넉해야 스쳐 지나가는
+   것만으로도 반응한다. 좁은 화면에서는 로고와 같이 줄어야 화면을 안 넘는다. */
 #stage {
-  padding: 90px 120px;
+  padding: clamp(34px, 11vmin, 90px) clamp(34px, 14vmin, 120px);
 }
 
 /* 진단 화면 — 주소에 ?debug 를 붙였을 때만 만들어진다 */
