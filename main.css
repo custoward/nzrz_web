@@ -144,6 +144,58 @@ body.doc {
   margin: 0;
 }
 
+/* ── 꼬불꾸불한 선 ───────────────────────────────────────────
+   지시서의 "장난기 레이어". 구분선이 아니라 캐릭터라서 두 자리에만 둔다.
+
+   · 선언문 아래 — 이 페이지에서 밑줄이 그어질 문장은 그것 하나뿐이다.
+   · 모집 중인 빈 자리 — 사람이 올 칸을 손으로 그어둔 자국.
+
+   섹션과 섹션 사이에는 절대 넣지 않는다. 거기 들어가는 순간
+   캐릭터가 아니라 구분선이 되고 하드룰을 어긴다. */
+.doc .squiggle {
+  display: block;
+  width: 15rem;
+  max-width: 100%;
+  height: .9rem;
+  margin: -.5rem 0 0;
+  overflow: visible;
+}
+
+.doc .squiggle.short {
+  width: 7rem;
+  margin: 0;
+}
+
+.doc .squiggle path {
+  fill: none;
+  stroke: #000;
+  /* preserveAspectRatio 를 none 으로 눌러놔서 획이 늘어난다.
+     이걸 걸어야 어디서든 같은 굵기의 한 줄로 남는다. */
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+
+/* 조잡한 모션 — 포토샵 자유변형 핸들을 잡아당긴 느낌.
+   steps() 로 끊어야 매끄럽게 흐르지 않고 툭툭 튄다. 일부러 어설프게. */
+@keyframes squiggle-nudge {
+  0%   { transform: none; }
+  25%  { transform: translate(1px, -1px) skewX(-1.6deg) scaleX(1.014); }
+  50%  { transform: translate(-1px, 1px) skewX(1.1deg)  scaleX(.988); }
+  75%  { transform: translate(1px, 0)    skewX(-.7deg)  scaleX(1.006); }
+  100% { transform: none; }
+}
+
+.doc .squiggle {
+  animation: squiggle-nudge 3.2s steps(1, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .doc .squiggle {
+    animation: none;
+  }
+}
+
 /* ── 좁은 화면 ───────────────────────────────────────────── */
 /* 6.5rem 짜리 왼쪽 단이 버티기 어려워지면 위아래로 쌓는다 */
 @media (max-width: 34rem) {
