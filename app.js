@@ -517,23 +517,33 @@
          CFG.waveSpeed);
   }
 
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+
   function emit(x, y, radius, strength, speed) {
-    var el = document.createElement('div');
-    el.className = 'wave';
-    el.style.left = x + 'px';
-    el.style.top = y + 'px';
-    // 정원으로 둔다. 눌러 찌그러뜨려 봤지만 파동은 둥근 게 맞다.
-    el.style.width = el.style.height = (radius * 2).toFixed(1) + 'px';
-    // 띠는 넓어서 실선보다 훨씬 무겁게 보인다. 여기 있는 줄 모르고
-    // 지나쳤다가 «방금 뭐가 지나갔나» 싶은 정도까지 낮춘다.
-    el.style.setProperty('--peak', (0.035 + 0.13 * strength).toFixed(3));
+    // 반지름을 transform 으로 키우면 획과 점선까지 같이 늘어난다.
+    // 점은 작아지고 원만 커져야 하므로 circle 의 r 을 직접 키운다.
+    var svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('class', 'wave');
+    svg.setAttribute('width', (radius * 2).toFixed(1));
+    svg.setAttribute('height', (radius * 2).toFixed(1));
+    svg.style.left = x + 'px';
+    svg.style.top = y + 'px';
+
+    var c = document.createElementNS(SVG_NS, 'circle');
+    c.setAttribute('cx', radius.toFixed(1));
+    c.setAttribute('cy', radius.toFixed(1));
+    c.style.setProperty('--r', radius.toFixed(1) + 'px');
+    // 1px 선 하나라 띠보다 훨씬 가볍다. 그만큼 진하기를 올려도 된다.
+    c.style.setProperty('--peak', (0.14 + 0.40 * strength).toFixed(3));
     // 지속시간은 «얼마나 멀리를 그 속도로 가느냐»에서 나온다. 세게 부딪히면
     // 더 멀리 가니 더 오래 남는 것이지, 느리게 가는 게 아니다.
-    el.style.animationDuration = Math.max(radius / speed, 0.35).toFixed(2) + 's';
-    el.addEventListener('animationend', function () {
-      if (el.parentNode) el.parentNode.removeChild(el);
+    c.style.animationDuration = Math.max(radius / speed, 0.35).toFixed(2) + 's';
+    c.addEventListener('animationend', function () {
+      if (svg.parentNode) svg.parentNode.removeChild(svg);
     });
-    waves.appendChild(el);
+
+    svg.appendChild(c);
+    waves.appendChild(svg);
   }
 
   // ══ 들어가는 문 ═════════════════════════════════════════════
