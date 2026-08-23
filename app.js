@@ -20,6 +20,12 @@
     ref: 2600,      // 기준 속도(viewBox단위/초). 화면상 약 460px/초 — 평범한 스윕.
     drive: 0.36,    // 커서가 1단위 지나갈 때 밀어주는 각속도(도/초)
 
+    // 기기 기울임 — 중력
+    tiltGain: 0.85,    // 기기가 1도 기울 때 획이 따라 눕는 각도
+    tiltMax: 11,       // 아무리 기울여도 이보다 더 눕지 않는다(도).
+                       // max(15~19)보다 낮게 둬야 흔들릴 여지가 남는다
+    tiltEase: 0.14,    // 기울기를 따라가는 속도. 손떨림을 걷어낸다
+
     // 기기 흔들기
     shakeDrive: 240,   // 방향이 있는 직접 구동 — 기울이면 그쪽으로 쏠린다
     shakePump: 300,    // 움직이던 방향으로 더 밀어 진폭을 키우는 항
@@ -121,6 +127,8 @@
                                typeof DeviceMotionEvent.requestPermission === 'function'
                                ? '필요(iOS)' : '불필요(안드로이드)'),
         'motion 상태    : ' + (kv.motion || 'idle'),
+        'orient 상태    : ' + (kv.orient || 'idle'),
+        '기울기         : ' + (kv.tilt || '-'),
         '',
         'touchmove      : ' + (n.touch || 0),
         'devicemotion   : ' + (n.motion || 0),
@@ -271,6 +279,44 @@
     strike(CFG.tones[pair + 1], vel * 0.8);
   }
 
+  // ══ 기울임 ══════════════════════════════════════════════════
+  // 풍경은 중력으로 매달린다. 기기를 기울이면 획이 향하는 «아래»가 바뀌고,
+  // 넷이 새 평형으로 흔들려 가다가 서로 부딪힌다. 소리는 그 결과지
+  // 기울임에 직접 매인 것이 아니다 — 기울임과 소리가 각각 다른 뜻을 갖지 않는다.
+  //
+  // 넷이 같은 각도로 눕는데 어떻게 부딪히느냐면, 고유 진동수(w0)가 저마다
+  // 어긋나 있어서 새 평형에 닿는 속도와 위상이 다르기 때문이다. 가는 도중에
+  // 서로를 스친다. 다 눕고 나면 나란해져 조용해진다.
+  //
+  // gamma(좌우 기울기, -90~90)만 쓴다. 화면 평면에 매달린 물건이라 앞뒤
+  // 기울기(beta)는 보이는 각도를 바꾸지 않는다. accelerationIncludingGravity
+  // 로도 잴 수 있지만 iOS와 안드로이드가 부호를 반대로 줘서, 규격이 같은
+  // gamma 쪽이 안전하다.
+
+  var hang = 0;   // 획이 쉬어야 할 각도(도). 0이면 화면 아래쪽.
+
+  /** 이 획이 쉬어야 할 각도. 막대는 걸이라 기울여도 제자리다. */
+  function equilibrium(p) {
+    return p.tone === undefined ? 0 : hang;
+  }
+
+  function onOrient(e) {
+    if (still || e.gamma === null || e.gamma === undefined) return;
+
+    // 오른쪽으로 기울이면(gamma +) 획의 아래끝은 오른쪽으로 가야 한다.
+    // 회전축이 위에 있어 아래끝을 오른쪽으로 보내는 건 음의 회전이다.
+    var want = -e.gamma * CFG.tiltGain;
+    if (want > CFG.tiltMax) want = CFG.tiltMax;
+    if (want < -CFG.tiltMax) want = -CFG.tiltMax;
+
+    var next = hang + (want - hang) * CFG.tiltEase;
+    if (Math.abs(next - hang) < 0.02) return;
+    hang = next;
+
+    if (D.on) D.set('tilt', 'gamma ' + e.gamma.toFixed(1) + '° → 매달림 ' + hang.toFixed(1) + '°');
+    start();
+  }
+
   // ══ 물리 ════════════════════════════════════════════════════
 
   var running = false;
@@ -289,8 +335,10 @@
     // 큰 각속도에서도 발산하지 않게 잘게 쪼개 적분한다
     var n = 4, h = dt / n;
     PARTS.forEach(function (p) {
+      // 복원력은 «화면 아래»가 아니라 «지금 아래»를 향한다.
+      var eq = equilibrium(p);
       for (var i = 0; i < n; i++) {
-        p.v += (-p.w0 * p.w0 * p.a - 2 * p.zeta * p.w0 * p.v) * h;
+        p.v += (-p.w0 * p.w0 * (p.a - eq) - 2 * p.zeta * p.w0 * p.v) * h;
         p.a += p.v * h;
       }
       if (p.a > p.max)  { p.a = p.max;  p.v *= -0.4; }
@@ -301,7 +349,7 @@
 
     var moving = false;
     PARTS.forEach(function (p) {
-      if (Math.abs(p.a) > 0.015 || Math.abs(p.v) > 0.05) moving = true;
+      if (Math.abs(p.a - equilibrium(p)) > 0.015 || Math.abs(p.v) > 0.05) moving = true;
       p.el.style.transform = 'rotate(' + p.a.toFixed(3) + 'deg)';
     });
 
@@ -310,8 +358,10 @@
     } else {
       running = false;
       PARTS.forEach(function (p) {
-        p.a = p.v = 0;
-        p.el.style.transform = '';
+        // 기울여둔 채로 멈췄으면 기운 자세 그대로 선다. 똑바로 되돌리지 않는다.
+        p.a = equilibrium(p);
+        p.v = 0;
+        p.el.style.transform = p.a ? 'rotate(' + p.a.toFixed(3) + 'deg)' : '';
       });
     }
   }
@@ -636,6 +686,35 @@
     start();
   }
 
+  // 기울기는 DeviceOrientation 이고, 흔들기는 DeviceMotion 이다. iOS 는
+  // 이 둘의 권한을 따로 받는다 — 모션을 허락했다고 방향까지 열리지 않는다.
+  var orientOn = false;
+
+  function enableOrientation() {
+    if (orientOn || !window.DeviceOrientationEvent) return;
+
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      orientOn = true;   // 요청은 한 번만
+      D.set('orient', '요청 중');
+      DeviceOrientationEvent.requestPermission().then(function (state) {
+        if (state === 'granted') {
+          window.addEventListener('deviceorientation', onOrient);
+          D.set('orient', 'on');
+        } else {
+          orientOn = false;
+          D.set('orient', '거부됨(' + state + ')');
+        }
+      }).catch(function (err) {
+        orientOn = false;
+        D.set('orient', '요청실패: ' + (err && err.message ? err.message : err));
+      });
+    } else {
+      window.addEventListener('deviceorientation', onOrient);
+      orientOn = true;
+      D.set('orient', 'on(권한불필요)');
+    }
+  }
+
   function enableMotion() {
     if (motionOn || !window.DeviceMotionEvent) return;
 
@@ -675,6 +754,7 @@
       audio.ctx.resume().then(settled).catch(settled);
     }
     enableMotion();
+    enableOrientation();
     settled();
   }
 
