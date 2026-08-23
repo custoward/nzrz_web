@@ -6,6 +6,12 @@
 // 마우스·손가락·기기 흔들림이 각속도(θ')를 밀어준다. 속도를 더하는
 // 방식이라 힘이 누적된다 — 리듬을 맞추면 공명해서 점점 크게 흔들리고,
 // 가만두면 스스로 잦아든다. 이웃한 획끼리 부딪히면 소리가 난다.
+//
+// 이중진자다. 막대(ㅡ)가 제 중심을 축으로 흔들리고, 획 넷은 그 막대에
+// 매달려 한 번 더 흔들린다. 획의 각도는 «막대 기준 상대각»이라
+// 화면에서 보이는 각도는 막대각 + 상대각이다. 막대가 흔들리면 획이
+// 향해야 할 «아래»가 획의 좌표계에서 움직이므로, 획은 흔들리는 기준을
+// 쫓아가느라 저 혼자일 때는 나올 수 없는 궤적을 그린다.
 
 (function () {
   'use strict';
@@ -51,9 +57,11 @@
     enterDelay: 1800,  // 첫 부딪힘 뒤 화살표가 나오기까지(ms)
 
     // 부딪힌 자리에서 퍼지는 파동
-    waveRings: 2,      // 한 번에 겹쳐 내보내는 고리 수
+    waveRings: 3,      // 한 번에 내보내는 고리 수
     waveMin: 130,      // 살짝 스쳤을 때 퍼지는 반지름(px)
-    waveMax: 540       // 세게 부딪혔을 때
+    waveMax: 540,      // 세게 부딪혔을 때
+    waveSpeed: 250     // 퍼지는 속도(px/초). 세기는 얼마나 멀리 가느냐를
+                       // 정하지 얼마나 빨리 가느냐를 정하지 않는다
   };
 
   // 풍경은 종이 아니라 양끝이 자유로운 금속 관이다. 관의 진동 모드는
@@ -78,8 +86,10 @@
     { sel: '.leg-2', tone: 1, x: 386.7, L: 368.1, oxL: -79.3, oxR:  90.6, w0: 7.3,  zeta: 0.050, gain: 0.90, max: 16 },
     { sel: '.leg-3', tone: 2, x: 601.2, L: 368.6, oxL: -73.5, oxR:  72.9, w0: 6.7,  zeta: 0.052, gain: 0.95, max: 17 },
     { sel: '.leg-4', tone: 3, x: 814.7, L: 366.1, oxL: -84.6, oxR:  86.3, w0: 7.9,  zeta: 0.048, gain: 0.85, max: 15 },
-    // 막대는 걸이라서 훨씬 뻣뻣하고 조금만 움직인다. 부딪히지 않는다.
-    { sel: '.bar',            x: 517.4, w0: 13.0, zeta: 0.140, gain: 0.16, max: 3 }
+    // 막대는 이중진자의 위쪽 팔이다. 획보다 느리고 덜 움직이지만 «조금만»
+    // 움직여선 안 된다 — 막대가 흔들려야 획이 쫓아갈 기준이 생긴다.
+    // 돌리는 대상은 막대 획 하나가 아니라 획 넷까지 담은 #rig 덩어리다.
+    { sel: '#rig',            x: 517.4, w0: 6.5,  zeta: 0.100, gain: 0.35, max: 5 }
   ];
 
   var RAD = Math.PI / 180;
@@ -90,6 +100,15 @@
   var mark = document.getElementById('mark');
   var still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   var LEGS = PARTS.slice(0, 4);
+
+  // 덩어리의 회전축은 막대의 중심이다. fill-box 는 덩어리 전체 bbox를
+  // 잡아버리므로 viewBox 좌표로 직접 찍어준다.
+  var barBox = mark.querySelector('.bar').getBBox();
+  var barCx = barBox.x + barBox.width / 2;
+  var barCy = barBox.y + barBox.height / 2;
+  var rig = mark.querySelector('#rig');
+  rig.style.transformBox = 'view-box';
+  rig.style.transformOrigin = barCx.toFixed(1) + 'px ' + barCy.toFixed(1) + 'px';
 
   PARTS.forEach(function (p) {
     p.el = mark.querySelector(p.sel);
@@ -299,9 +318,16 @@
   var hang = 0;         // 획이 쉬어야 할 각도(도). 0이면 화면 아래쪽.
   var lastOrientT = 0;
 
-  /** 이 획이 쉬어야 할 각도. 막대는 걸이라 기울여도 제자리다. */
+  var BAR = PARTS[PARTS.length - 1];
+
+  /**
+   * 이 부분이 쉬어야 할 각도.
+   * 막대는 화면에 매인 걸이라 기기를 기울여도 제자리다(0).
+   * 획은 막대에 매달렸으니 «막대 기준»으로 보면, 막대가 돌아간 만큼
+   * 평형이 반대로 밀린다. 이 한 줄이 이중진자의 전부다.
+   */
   function equilibrium(p) {
-    return p.tone === undefined ? 0 : hang;
+    return p.tone === undefined ? 0 : hang - BAR.a;
   }
 
   function onOrient(e) {
@@ -452,30 +478,46 @@
     if (now - (lastWave[pair] || -9999) < 90) return;
     lastWave[pair] = now;
 
+    // 넘겨받은 좌표는 «막대 기준»이다. 막대가 기울어 있으면 접촉 지점도
+    // 그만큼 돌아가 있으므로, 막대 중심을 축으로 되돌려 viewBox 좌표를 얻는다.
+    var rb = BAR.a * RAD;
+    var cs = Math.cos(rb), sn = Math.sin(rb);
+    var dx = vx - barCx, dy = vy - barCy;
+    var wx = barCx + dx * cs - dy * sn;
+    var wy = barCy + dx * sn + dy * cs;
+
     // viewBox 좌표 → 화면 좌표. 로고 크기가 화면마다 다르므로 그때그때 잰다.
     var r = mark.getBoundingClientRect();
-    var x = r.left + vx / 1024 * r.width;
-    var y = r.top + vy / 1024 * r.height;
+    var x = r.left + wx / 1024 * r.width;
+    var y = r.top + wy / 1024 * r.height;
 
     var vel = Math.pow(Math.min(closing / CFG.hitFull, 1), 1.4);
     var span = CFG.waveMin + (CFG.waveMax - CFG.waveMin) * vel;
 
-    // 고리 하나로는 파문이 안 된다. 뒤따르는 고리를 조금 늦게, 조금 여리게.
+    // 고리 하나로는 파문이 안 된다. 그렇다고 같은 속도로 보내면 세 개가
+    // 한 덩어리로 붙어 다녀 큰 고리 하나처럼 보인다. 뒤 고리일수록 느리게
+    // 보내 갈수록 벌어지게 한다 — 물결도 파장마다 속도가 달라 그렇게 흩어진다.
     for (var i = 0; i < CFG.waveRings; i++) {
-      emit(x, y, span * (1 - i * 0.22), vel * (1 - i * 0.45), i * 0.11);
+      emit(x, y,
+           span * (1 - i * 0.09),               // 뒤 고리는 조금 덜 간다
+           vel * (1 - i * 0.30),                // 조금 여리게
+           i * 0.08,                            // 조금 늦게 출발
+           CFG.waveSpeed * (1 - i * 0.17));     // 그리고 더 느리게 간다
     }
   }
 
-  function emit(x, y, radius, strength, delay) {
+  function emit(x, y, radius, strength, delay, speed) {
     var el = document.createElement('div');
     el.className = 'wave';
     el.style.left = x + 'px';
     el.style.top = y + 'px';
     el.style.width = el.style.height = radius * 2 + 'px';
-    // 진하게 깔면 장식이 된다. 흰 배경 위 1px 검정 선이라
-    // 이 정도가 "보이긴 하는데 눈에 안 띄는" 경계다.
-    el.style.setProperty('--peak', (0.10 + 0.35 * strength).toFixed(3));
-    el.style.animationDuration = (1.0 + 1.3 * strength).toFixed(2) + 's';
+    // 실선이 아니라 번지는 띠라서 같은 값이라도 훨씬 무겁게 보인다.
+    // 실선일 때 쓰던 0.10~0.45 를 그대로 두면 얼룩이 된다.
+    el.style.setProperty('--peak', (0.07 + 0.26 * strength).toFixed(3));
+    // 지속시간은 «얼마나 멀리를 그 속도로 가느냐»에서 나온다. 세게 부딪히면
+    // 더 멀리 가니 더 오래 남는 것이지, 느리게 가는 게 아니다.
+    el.style.animationDuration = Math.max(radius / speed, 0.35).toFixed(2) + 's';
     el.style.animationDelay = delay.toFixed(2) + 's';
     el.addEventListener('animationend', function () {
       if (el.parentNode) el.parentNode.removeChild(el);
