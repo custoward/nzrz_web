@@ -519,22 +519,18 @@
            span * (1 - i * 0.09) * rand(0.86, 1.14),
            vel * (1 - i * 0.30) * rand(0.8, 1.2),
            i * rand(0.05, 0.14),
-           CFG.waveSpeed * (1 - i * 0.17) * rand(0.88, 1.12),
-           rand(1.06, 1.34),                 // 납작한 정도
-           rand(-16, 16));                   // 기울기
+           CFG.waveSpeed * (1 - i * 0.17) * rand(0.88, 1.12));
     }
   }
 
-  function emit(x, y, radius, strength, delay, speed, flat, tilt) {
+  function emit(x, y, radius, strength, delay, speed) {
     var el = document.createElement('div');
     el.className = 'wave';
     el.style.left = x + 'px';
     el.style.top = y + 'px';
-    // 정원이 아니다. 부딪힘은 옆으로 미는 힘이라 그 방향으로 더 퍼진다.
-    // 넓힌 만큼 눌러서 크기 자체는 그대로 둔다.
-    el.style.width = (radius * 2 * flat).toFixed(1) + 'px';
-    el.style.height = (radius * 2 / flat).toFixed(1) + 'px';
-    el.style.setProperty('--tilt', tilt.toFixed(1) + 'deg');
+    // 정원으로 둔다. 눌러 찌그러뜨려 봤지만 파동은 둥근 게 맞다 —
+    // 흩어야 할 건 모양이 아니라 개수·크기·속도였다.
+    el.style.width = el.style.height = (radius * 2).toFixed(1) + 'px';
     // 띠는 넓어서 실선보다 훨씬 무겁게 보인다. 여기 있는 줄 모르고
     // 지나쳤다가 «방금 뭐가 지나갔나» 싶은 정도까지 낮춘다.
     el.style.setProperty('--peak', (0.035 + 0.13 * strength).toFixed(3));
