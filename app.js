@@ -57,8 +57,6 @@
     enterDelay: 1800,  // 첫 부딪힘 뒤 화살표가 나오기까지(ms)
 
     // 부딪힌 자리에서 퍼지는 파동
-    waveRings: 3,      // 한 번에 내보내는 고리의 최대 개수. 약하게 부딪히면
-                       // 하나만 나온다 — 매번 셋이면 규칙이 눈에 보인다
     waveMin: 130,      // 살짝 스쳤을 때 퍼지는 반지름(px)
     waveMax: 540,      // 세게 부딪혔을 때
     waveSpeed: 130     // 퍼지는 속도(px/초). 세기는 얼마나 멀리 가느냐를
@@ -482,9 +480,9 @@
   function ripple(pair, vx, vy, closing) {
     if (!waves || still || closing < CFG.hitFloor) return;
 
-    // 세게 흔들면 세 쌍이 쉬지 않고 부딪힌다. 고리가 무한정 쌓이면
-    // 화면이 뭉개지고 요소도 계속 늘어난다. 넘치면 그냥 그리지 않는다.
-    if (waves.childElementCount > 24) return;
+    // 세게 흔들면 세 쌍이 쉬지 않고 부딪힌다. 고리가 쌓이면 화면이
+    // 뭉개지므로 넘치면 그냥 그리지 않는다.
+    if (waves.childElementCount > 8) return;
 
     // 한 번 부딪히면 몇 프레임에 걸쳐 겹쳐 판정된다. 소리와 같은 간격으로 솎는다.
     var now = performance.now();
@@ -507,29 +505,21 @@
     var vel = Math.pow(Math.min(closing / CFG.hitFull, 1), 1.4);
     var span = CFG.waveMin + (CFG.waveMax - CFG.waveMin) * vel;
 
-    // 고리 하나로는 파문이 안 되고, 매번 똑같이 셋이면 규칙이 보인다.
-    // 개수를 세기에 맡긴다 — 살짝 스치면 하나, 세게 부딪히면 셋.
-    var rings = 1 + Math.round(vel * (CFG.waveRings - 1));
-
-    // 뒤 고리일수록 느리게 보내 갈수록 벌어지게 한다. 물결도 파장마다
-    // 속도가 달라 그렇게 흩어진다. 거기에 매번 조금씩 어긋나게 흔들어준다 —
-    // 자로 잰 듯 같은 값이 반복되는 게 «인위적»으로 보이는 원인이다.
-    for (var i = 0; i < rings; i++) {
-      emit(x + rand(-7, 7), y + rand(-7, 7),
-           span * (1 - i * 0.09) * rand(0.86, 1.14),
-           vel * (1 - i * 0.30) * rand(0.8, 1.2),
-           i * rand(0.05, 0.14),
-           CFG.waveSpeed * (1 - i * 0.17) * rand(0.88, 1.12));
-    }
+    // 소리 하나에 고리 하나. 여러 개를 겹쳐 파문처럼 보이게 해봤지만
+    // 화면이 지저분해질 뿐이었다. 세기 차이는 크기와 진하기로 이미 보인다.
+    // 다만 값이 자로 잰 듯 같으면 규칙이 눈에 보이므로 조금씩 흔들어준다.
+    emit(x, y,
+         span * rand(0.86, 1.14),
+         vel * rand(0.85, 1.15),
+         CFG.waveSpeed * rand(0.9, 1.1));
   }
 
-  function emit(x, y, radius, strength, delay, speed) {
+  function emit(x, y, radius, strength, speed) {
     var el = document.createElement('div');
     el.className = 'wave';
     el.style.left = x + 'px';
     el.style.top = y + 'px';
-    // 정원으로 둔다. 눌러 찌그러뜨려 봤지만 파동은 둥근 게 맞다 —
-    // 흩어야 할 건 모양이 아니라 개수·크기·속도였다.
+    // 정원으로 둔다. 눌러 찌그러뜨려 봤지만 파동은 둥근 게 맞다.
     el.style.width = el.style.height = (radius * 2).toFixed(1) + 'px';
     // 띠는 넓어서 실선보다 훨씬 무겁게 보인다. 여기 있는 줄 모르고
     // 지나쳤다가 «방금 뭐가 지나갔나» 싶은 정도까지 낮춘다.
@@ -537,7 +527,6 @@
     // 지속시간은 «얼마나 멀리를 그 속도로 가느냐»에서 나온다. 세게 부딪히면
     // 더 멀리 가니 더 오래 남는 것이지, 느리게 가는 게 아니다.
     el.style.animationDuration = Math.max(radius / speed, 0.35).toFixed(2) + 's';
-    el.style.animationDelay = delay.toFixed(2) + 's';
     el.addEventListener('animationend', function () {
       if (el.parentNode) el.parentNode.removeChild(el);
     });

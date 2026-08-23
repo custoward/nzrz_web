@@ -154,7 +154,8 @@ body {
   /* 파동은 일정한 속도로 퍼지고 진폭만 잦아든다. 이징을 주면
      순식간에 커졌다 멈추는 원이 되지 파동으로 안 보인다. */
   animation-timing-function: linear;
-  /* 지연되는 동안에도 from 상태로 있어야 안 번쩍인다 */
+  /* 첫 프레임 전에 base 스타일(scale 0, opacity 0)이 한 번 그려지지
+     않도록 from 상태를 미리 물린다 */
   animation-fill-mode: both;
 }
 
