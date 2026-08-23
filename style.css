@@ -136,37 +136,41 @@ body {
 
 .wave {
   position: absolute;
-  /* 좌표가 고리의 중심이다 */
-  transform: translate(-50%, -50%);
-  /* 획 굵기가 테두리 밖으로 반 픽셀 나간다 */
-  overflow: visible;
-}
-
-/* 얇은 선 하나다. 약해질수록 실선이 점선이 되고, 점이 작아지면서
-   간격이 벌어진다 — 사라지는 걸 «흐려짐»이 아니라 «끊김»으로 말한다.
-   투명도만으로 지우면 뿌옇게 번지는데, 이 사이트는 선으로 된 문서다.
-
-   반지름이 커질수록 둘레도 길어지므로, 점 개수는 대체로 유지된 채
-   점만 작아지고 사이가 멀어진다. */
-.wave circle {
-  fill: none;
-  stroke: #000;
-  stroke-width: 1;
-  /* 짧아진 조각이 네모가 아니라 점으로 보이게 */
-  stroke-linecap: round;
+  border-radius: 50%;
+  /* 획이 아니라 번지는 띠다. 1px 실선이면 «퍼지는 파동»이 아니라
+     «커지는 원»으로 읽힌다. 바깥(파면)이 진하고 안쪽으로 갈수록 풀린다 —
+     지나간 자리는 흐려지고 앞장선 자리가 선명한 게 물결의 생김새다.
+     closest-side 라서 요소가 커져도 비율이 그대로 유지된다. */
+  background: radial-gradient(closest-side,
+      rgba(0, 0, 0, 0)    52%,
+      rgba(0, 0, 0, .10)  70%,
+      rgba(0, 0, 0, .38)  84%,
+      rgba(0, 0, 0, .85)  94%,
+      rgba(0, 0, 0, 0)   100%);
+  opacity: 0;
+  /* 지름을 정해두고 0에서 1까지 키운다. 좌표는 고리의 중심이다. */
+  transform: translate(-50%, -50%) scale(0);
   animation-name: wave-out;
-  /* 파동은 등속으로 퍼진다. 잦아드는 건 진폭이지 속도가 아니다. */
+  /* 파동은 일정한 속도로 퍼지고 진폭만 잦아든다. 이징을 주면
+     순식간에 커졌다 멈추는 원이 되지 파동으로 안 보인다. */
   animation-timing-function: linear;
+  /* 첫 프레임 전에 base 스타일(scale 0, opacity 0)이 한 번 그려지지
+     않도록 from 상태를 미리 물린다 */
   animation-fill-mode: both;
 }
 
+/* 반지름은 등속(timing-function: linear)이고, 진폭만 비선형으로 죽는다.
+   퍼지는 파동은 같은 에너지를 점점 긴 둘레에 나눠 갖기 때문에 세기가
+   거리에 반비례해서 떨어진다 — 초반에 확 죽고 뒤로 갈수록 완만하다.
+   둘 다 선형이면 파동이 아니라 균일하게 커지는 원으로 읽힌다. */
 @keyframes wave-out {
-  from { r: 0;          stroke-dasharray: 30px 0px;    opacity: var(--peak); }
-  12%  {                stroke-dasharray: 18px 2px;    opacity: calc(var(--peak) * .72); }
-  30%  {                stroke-dasharray: 10px 7px;    opacity: calc(var(--peak) * .52); }
-  55%  {                stroke-dasharray: 5px 16px;    opacity: calc(var(--peak) * .34); }
-  78%  {                stroke-dasharray: 2.5px 28px;  opacity: calc(var(--peak) * .19); }
-  to   { r: var(--r);   stroke-dasharray: 1px 46px;    opacity: 0; }
+  from { transform: translate(-50%, -50%) scale(0);    opacity: var(--peak); }
+  8%   { transform: translate(-50%, -50%) scale(.08);  opacity: calc(var(--peak) * .74); }
+  20%  { transform: translate(-50%, -50%) scale(.2);   opacity: calc(var(--peak) * .52); }
+  36%  { transform: translate(-50%, -50%) scale(.36);  opacity: calc(var(--peak) * .36); }
+  56%  { transform: translate(-50%, -50%) scale(.56);  opacity: calc(var(--peak) * .24); }
+  78%  { transform: translate(-50%, -50%) scale(.78);  opacity: calc(var(--peak) * .13); }
+  to   { transform: translate(-50%, -50%) scale(1);    opacity: 0; }
 }
 
 /* 움직임을 원치 않는 사람에게는 그리지 않는다 */
