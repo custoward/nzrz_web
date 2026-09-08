@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>느즈러짐</title>
+<link rel="icon" href="logo.svg">
+<style>
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    width: 100%;
+    min-height: 100%;
+    margin: 0;
+  }
+
+  body {
+    display: grid;
+    place-items: center;
+    min-height: 100svh;
+    background: #65aaf0;
+    color: #000;
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic",
+      -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow: hidden;
+  }
+
+  #water {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    pointer-events: none;
+  }
+
+  #clouds {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 0;
+    width: 100%;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .cloud {
+    position: absolute;
+    left: -160px;
+    width: 120px;
+    height: 60px;
+    background: url('assets/Cloud.png') 0 0 / 360px 60px no-repeat;
+    image-rendering: pixelated;
+    animation: cloud-drift 34s steps(180, end) infinite;
+  }
+
+  .cloud:nth-child(1) { top: 14%; background-position-x: 0; animation-duration: 38s; }
+  .cloud:nth-child(2) { top: 31%; background-position-x: -120px; animation-duration: 52s; animation-delay: -19s; transform: scale(.72); }
+  .cloud:nth-child(3) { top: 48%; background-position-x: -240px; animation-duration: 44s; animation-delay: -31s; transform: scale(1.18); }
+
+  @keyframes cloud-drift {
+    from { margin-left: 0; }
+    to { margin-left: calc(100vw + 320px); }
+  }
+
+  #surface-glint {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    width: 100%;
+    height: 2px;
+    background: repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, .82) 0 18px,
+      rgba(159, 226, 246, .72) 18px 30px,
+      rgba(101, 222, 216, .76) 30px 46px,
+      rgba(64, 183, 213, .58) 46px 54px,
+      rgba(213, 245, 250, .74) 54px 72px
+    );
+    background-size: 72px 2px;
+    pointer-events: none;
+    will-change: transform, background-position;
+    animation: surface-shine 2.8s steps(12, end) infinite;
+  }
+
+  @keyframes surface-shine {
+    to { background-position-x: 72px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #surface-glint { animation: none; }
+    .cloud { animation: none; }
+  }
+
+  #objects {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  #effects {
+    position: fixed;
+    inset: 0;
+    z-index: 3;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .water-impact {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80px;
+    height: 80px;
+    background: url('assets/waterDrop.png') 0 0 / 320px 80px no-repeat;
+    image-rendering: pixelated;
+    transform: translate(-50%, -75%);
+    animation: water-impact .45s steps(4, end) forwards;
+  }
+
+  @keyframes water-impact {
+    to { background-position-x: -320px; }
+  }
+
+  #selector {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 4;
+    width: 126px;
+    height: 36px;
+    background: url('assets/bottle.png') center / 126px 36px no-repeat;
+    image-rendering: pixelated;
+    pointer-events: none;
+    will-change: transform;
+  }
+
+  .falling-logo {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: block;
+    height: auto;
+    image-rendering: auto;
+    transform-origin: center;
+    will-change: transform;
+  }
+
+  nav {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+  }
+
+  button {
+    appearance: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: clamp(1rem, 2vw, 1.25rem);
+    cursor: pointer;
+  }
+
+  button.active {
+    color: #ff5b35;
+  }
+
+  nav button {
+    pointer-events: none;
+    cursor: default;
+  }
+
+  nav button:disabled {
+    opacity: 1;
+    color: #000;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  nav button.active {
+    pointer-events: auto;
+    cursor: pointer;
+  }
+
+  .fixture {
+    position: fixed;
+    z-index: 3;
+    width: 54px;
+    height: 54px;
+    display: grid;
+    place-items: center;
+  }
+
+  .fixture svg {
+    display: block;
+    width: 42px;
+    height: 42px;
+    overflow: visible;
+  }
+
+  .fixture.on {
+    color: #ff5b35;
+  }
+
+  #floor {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    height: 48px;
+    background: #d8d8d8;
+    pointer-events: none;
+  }
+
+  #faucet {
+    top: 8px;
+    right: 8px;
+    width: 100px;
+    height: 88px;
+  }
+
+  #faucet img {
+    display: block;
+    width: 100px;
+    height: 88px;
+    object-fit: contain;
+  }
+
+  #drain {
+    bottom: 3px;
+    left: 50%;
+    width: 70px;
+    height: 44px;
+    transform: translateX(-50%);
+  }
+
+  #drain img {
+    display: block;
+    width: 68px;
+    height: 44px;
+    object-fit: fill;
+  }
+
+  #drain.on img {
+    filter: brightness(.72);
+  }
+
+  button:hover,
+  button:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: .3em;
+  }
+
+</style>
+</head>
+<body>
+  <canvas id="water" aria-hidden="true"></canvas>
+  <div id="clouds" aria-hidden="true">
+    <span class="cloud"></span>
+    <span class="cloud"></span>
+    <span class="cloud"></span>
+  </div>
+  <div id="surface-glint" aria-hidden="true"></div>
+  <div id="objects" aria-hidden="true"></div>
+  <div id="effects" aria-hidden="true"></div>
+  <div id="floor" aria-hidden="true"></div>
+  <div id="selector" aria-hidden="true"></div>
+
+  <button class="fixture" id="drain" type="button" aria-label="배수구" aria-pressed="false">
+    <img src="assets/drain.png" alt="">
+  </button>
+
+  <nav aria-label="메인 메뉴">
+    <button type="button" disabled>소개</button>
+    <button type="button" disabled>작업</button>
+    <button type="button" disabled>방명록</button>
+  </nav>
+
+<script>
+  (() => {
+    const canvas = document.querySelector('#water');
+    const ctx = canvas.getContext('2d');
+    const clouds = document.querySelector('#clouds');
+    const surfaceGlint = document.querySelector('#surface-glint');
+    const objects = document.querySelector('#objects');
+    const effects = document.querySelector('#effects');
+    const selector = document.querySelector('#selector');
+    const buttons = [...document.querySelectorAll('nav button')];
+    const faucet = document.querySelector('#faucet');
+    const faucetImage = document.querySelector('#faucet-image');
+    const drain = document.querySelector('#drain');
+    const pixel = 6;
+    const floorHeight = 48;
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const dither4 = [
+      [0, 8, 2, 10],
+      [12, 4, 14, 6],
+      [3, 11, 1, 9],
+      [15, 7, 13, 5]
+    ];
+    const waterColors = [
+      [8, 164, 199, 174],
+      [4, 111, 143, 170],
+      [1, 54, 77, 182]
+    ];
+
+    let width = 0;
+    let height = 0;
+    let surface = 0;
+    let targetSurface = 0;
+    let waterVolume = 0;
+    let initialized = false;
+    let faucetOn = false;
+    let drainOn = false;
+    let waterPixels = null;
+    let startedAt = performance.now();
+    let lastFrame = startedAt;
+
+    const logos = [];
+    const bubbles = [];
+
+    function resize() {
+      width = Math.ceil(innerWidth / pixel);
+      height = Math.ceil(innerHeight / pixel);
+      canvas.width = width;
+      canvas.height = height;
+      ctx.imageSmoothingEnabled = false;
+      waterPixels = ctx.createImageData(width, height);
+      const floorTop = height - floorHeight / pixel;
+      if (!initialized) {
+        waterVolume = width * floorTop * .48;
+        surface = floorTop - waterVolume / width;
+        initialized = true;
+      }
+    }
+
+    function waveY(x, time) {
+      return Math.round(surface);
+    }
+
+    function drawDitheredWater(surfaceY) {
+      const data = waterPixels.data;
+      data.fill(0);
+      const top = Math.max(0, Math.min(height, Math.round(surfaceY)));
+      const depth = Math.max(1, height - top);
+      const gradientDepth = Math.max(8, depth * .28);
+
+      for (let y = top; y < height; y++) {
+        const gradient = Math.min(1, (y - top) / gradientDepth) * (waterColors.length - 1);
+        const lower = Math.min(waterColors.length - 1, Math.floor(gradient));
+        const upper = Math.min(waterColors.length - 1, lower + 1);
+        const mix = gradient - lower;
+
+        for (let x = 0; x < width; x++) {
+          const threshold = (dither4[y & 3][x & 3] + .5) / 16;
+          const color = mix > threshold ? waterColors[upper] : waterColors[lower];
+          const index = (y * width + x) * 4;
+          data[index] = color[0];
+          data[index + 1] = color[1];
+          data[index + 2] = color[2];
+          data[index + 3] = color[3];
+        }
+      }
+
+      ctx.putImageData(waterPixels, 0, 0);
+    }
+
+    function buttonAt(boxX, boxY, halfWidth, halfHeight) {
+      let hit = null;
+      let nearest = Infinity;
+      /* bottle.png의 실제 몸통: 오른쪽의 가는 목·마개와 투명 여백은 제외한다. */
+      const bottleBody = {
+        left: boxX - halfWidth + 3,
+        right: boxX + 34,
+        top: boxY - halfHeight + 3,
+        bottom: boxY + halfHeight - 3
+      };
+
+      for (const button of buttons) {
+        const rect = button.getBoundingClientRect();
+        const textX = rect.left + rect.width / 2;
+        const textY = rect.top + rect.height / 2;
+        const overlaps = textX >= bottleBody.left
+          && textX <= bottleBody.right
+          && textY >= bottleBody.top
+          && textY <= bottleBody.bottom;
+        const centerDistance = Math.abs(boxY - (rect.top + rect.height / 2));
+
+        if (overlaps && centerDistance < nearest) {
+          hit = button;
+          nearest = centerDistance;
+        }
+      }
+
+      return hit;
+    }
+
+    function submergedPart(logo) {
+      const top = logo.y - logo.size / 2;
+      const bottom = logo.y + logo.size / 2;
+      const localSurface = waveY(logo.x, (performance.now() - startedAt) / 1000);
+      return Math.max(0, Math.min(1, (bottom - localSurface) / logo.size));
+    }
+
+    function containLogo(logo) {
+      const half = logo.size / 2;
+      const floorTop = height - floorHeight / pixel;
+
+      if (logo.x < half) {
+        logo.x = half;
+        logo.vx = Math.abs(logo.vx) * .35;
+      } else if (logo.x > width - half) {
+        logo.x = width - half;
+        logo.vx = -Math.abs(logo.vx) * .35;
+      }
+
+      if (logo.y > floorTop - half) {
+        logo.y = floorTop - half;
+        if (Math.abs(logo.vy) > .45) {
+          logo.vy *= -.18;
+          logo.av *= .55;
+        } else {
+          logo.vy = 0;
+          logo.av *= .82;
+        }
+      }
+    }
+
+    function solveLogoCollisions(time) {
+      /* 여러 번 풀어야 세 개 이상 쌓였을 때 남은 겹침까지 빠르게 사라진다. */
+      for (let pass = 0; pass < 3; pass++) {
+        for (let i = 0; i < logos.length; i++) {
+          for (let j = i + 1; j < logos.length; j++) {
+            const a = logos[i];
+            const b = logos[j];
+            let dx = b.x - a.x;
+            let dy = b.y - a.y;
+            let distance = Math.hypot(dx, dy);
+            const minDistance = (a.size + b.size) * .48;
+            if (distance >= minDistance) continue;
+
+            if (distance < .001) {
+              dx = .001;
+              dy = 0;
+              distance = .001;
+            }
+
+            const nx = dx / distance;
+            const ny = dy / distance;
+            const inverseA = 1 / (a.size * a.size);
+            const inverseB = 1 / (b.size * b.size);
+            const inverseTotal = inverseA + inverseB;
+            const overlap = minDistance - distance;
+
+            a.x -= nx * overlap * inverseA / inverseTotal;
+            a.y -= ny * overlap * inverseA / inverseTotal;
+            b.x += nx * overlap * inverseB / inverseTotal;
+            b.y += ny * overlap * inverseB / inverseTotal;
+
+            const relativeX = b.vx - a.vx;
+            const relativeY = b.vy - a.vy;
+            const closingSpeed = relativeX * nx + relativeY * ny;
+            if (closingSpeed < 0) {
+              const underwater = a.y > waveY(a.x, time) || b.y > waveY(b.x, time);
+              const restitution = underwater ? .06 : .24;
+              const impulse = -(1 + restitution) * closingSpeed / inverseTotal;
+              a.vx -= impulse * nx * inverseA;
+              a.vy -= impulse * ny * inverseA;
+              b.vx += impulse * nx * inverseB;
+              b.vy += impulse * ny * inverseB;
+
+              const twist = (relativeX * ny - relativeY * nx) * .015;
+              a.av -= twist * inverseA * a.size;
+              b.av += twist * inverseB * b.size;
+            }
+          }
+        }
+
+        for (const logo of logos) containLogo(logo);
+      }
+    }
+
+    function updateLogos(dt, time) {
+      if (faucetOn) waterVolume += width * 5.5 * dt;
+      if (drainOn) waterVolume -= width * 9 * dt;
+      waterVolume = Math.max(0, waterVolume);
+
+      for (const logo of logos) {
+        const localSurface = waveY(logo.x, time);
+        const radius = logo.size * .42;
+        const inWater = logo.y + radius >= localSurface;
+
+        if (inWater && !logo.touchedWater) {
+          logo.touchedWater = true;
+          splashAt(logo.x, localSurface);
+          logo.vy = -Math.min(7, Math.max(2.4, Math.abs(logo.vy) * .28));
+          logo.vx += (Math.random() - .5) * 2.5;
+          logo.av += (Math.random() - .5) * 1.8;
+        }
+
+        if (logo.y > localSurface) {
+          /* 물속: 무거운 물체라 계속 가라앉지만 속도는 저항으로 빠르게 줄어든다. */
+          logo.vy += 8 * dt;
+          logo.vy *= Math.exp(-1.45 * dt);
+          logo.vx *= Math.exp(-1.9 * dt);
+          logo.av *= Math.exp(-1.7 * dt);
+        } else {
+          /* 공기 중 낙하. */
+          logo.vy += 31 * dt;
+          logo.vx *= Math.exp(-.08 * dt);
+          logo.av *= Math.exp(-.05 * dt);
+        }
+
+        if (logo.touchedWater && !logo.bubbled && logo.y > localSurface + radius * .4) {
+          logo.bubbled = true;
+          releaseBubbles(logo, localSurface);
+        }
+
+        logo.x += logo.vx * dt;
+        logo.y += logo.vy * dt;
+        logo.angle += logo.av * dt;
+
+        containLogo(logo);
+      }
+
+      solveLogoCollisions(time);
+
+      const floorTop = height - floorHeight / pixel;
+      const maxVolume = width * (floorTop - height * .08);
+      waterVolume = Math.min(maxVolume, waterVolume);
+      const displacedVolume = waterVolume > 0
+        ? logos.reduce((sum, logo) => sum + submergedPart(logo) * logo.size * logo.size * .12, 0)
+        : 0;
+      targetSurface = Math.max(height * .08, Math.min(floorTop, floorTop - (waterVolume + displacedVolume) / width));
+
+      if (drainOn && waterVolume <= 0) {
+        drainOn = false;
+        updateFixtures();
+      }
+
+      if (faucetOn && waterVolume >= maxVolume) {
+        faucetOn = false;
+        updateFixtures();
+      }
+    }
+
+    function splashAt(x, y) {
+      const splash = document.createElement('div');
+      splash.className = 'water-impact';
+      splash.style.left = `${x * pixel}px`;
+      splash.style.top = `${y / height * innerHeight}px`;
+      effects.appendChild(splash);
+
+      const remove = () => splash.remove();
+      splash.addEventListener('animationend', remove, { once: true });
+      setTimeout(remove, 700);
+    }
+
+    function releaseBubbles(logo, localSurface) {
+      for (let i = 0; i < 10; i++) {
+        bubbles.push({
+          x: logo.x + (Math.random() - .5) * logo.size * .8,
+          y: Math.max(localSurface + 2, logo.y + (Math.random() - .5) * logo.size * .6),
+          vx: (Math.random() - .5) * 2.2,
+          vy: 7 + Math.random() * 7,
+          age: 0,
+          life: 1.1 + i * .28 + Math.random() * .45
+        });
+      }
+    }
+
+    function updateBubbles(dt, time) {
+      for (let i = bubbles.length - 1; i >= 0; i--) {
+        const bubble = bubbles[i];
+        bubble.age += dt;
+        bubble.x += bubble.vx * dt + Math.sin(time * 2.1 + i) * .018;
+        bubble.y -= bubble.vy * dt;
+
+        const reachedSurface = bubble.y <= waveY(bubble.x, time) + 1;
+        if (bubble.age >= bubble.life || reachedSurface) bubbles.splice(i, 1);
+      }
+    }
+
+    function drawBubbles() {
+      ctx.fillStyle = '#65aaf0';
+      for (const bubble of bubbles) {
+        const progress = bubble.age / bubble.life;
+        const size = progress > .58 ? 2 : 1;
+        ctx.fillRect(Math.round(bubble.x), Math.round(bubble.y), size, size);
+      }
+    }
+
+    function drawLogos() {
+      for (const logo of logos) {
+        const size = logo.size * pixel;
+        const submerged = submergedPart(logo);
+        logo.el.style.width = `${size}px`;
+        logo.el.style.opacity = String(1 - submerged * .28);
+        logo.el.style.transform = `translate(${logo.x * pixel - size / 2}px, ${logo.y * pixel - size / 2}px) rotate(${logo.angle}rad)`;
+      }
+    }
+
+    function dropLogo(event) {
+      if (event.button !== undefined && event.button !== 0) return;
+      if (event.target.closest('button')) return;
+      const size = 18 + Math.random() * 6;
+      const element = document.createElement('img');
+      element.className = 'falling-logo';
+      element.src = 'logo.svg';
+      element.alt = '';
+      objects.appendChild(element);
+      logos.push({
+        x: event.clientX / pixel,
+        y: event.clientY / pixel,
+        vx: (Math.random() - .5) * 3,
+        vy: 0,
+        angle: (Math.random() - .5) * .18,
+        av: (Math.random() - .5) * 1.4,
+        size,
+        touchedWater: false,
+        bubbled: false,
+        el: element
+      });
+    }
+
+    function updateFixtures() {
+      drain.classList.toggle('on', drainOn);
+      if (faucet) {
+        faucet.classList.toggle('on', faucetOn);
+        faucet.setAttribute('aria-pressed', String(faucetOn));
+      }
+      if (faucetImage) {
+        faucetImage.src = faucetOn ? 'assets/faucet-on.png' : 'assets/faucet-off.png';
+      }
+      drain.setAttribute('aria-pressed', String(drainOn));
+    }
+
+    if (faucet) {
+      faucet.addEventListener('click', () => {
+        faucetOn = !faucetOn;
+        if (faucetOn) drainOn = false;
+        updateFixtures();
+      });
+    }
+
+    drain.addEventListener('click', () => {
+      drainOn = !drainOn;
+      if (drainOn) faucetOn = false;
+      updateFixtures();
+    });
+
+    function scrollWater(event) {
+      event.preventDefault();
+      /* 휠 이동량을 높이가 아니라 현재 수조 가로폭을 곱한 부피로 환산한다. */
+      waterVolume -= event.deltaY / pixel * width * .28;
+      const floorTop = height - floorHeight / pixel;
+      const maxVolume = width * (floorTop - height * .08);
+      waterVolume = Math.max(0, Math.min(maxVolume, waterVolume));
+      faucetOn = false;
+      drainOn = false;
+      updateFixtures();
+    }
+
+    function draw(now) {
+      const time = (now - startedAt) / 1000;
+      const dt = Math.min((now - lastFrame) / 1000, .034);
+      lastFrame = now;
+
+      updateLogos(dt, time);
+      updateBubbles(dt, time);
+      const surfaceGap = targetSurface - surface;
+      surface += surfaceGap * (still ? 1 : 0.055);
+      if (Math.abs(surfaceGap) < .03) surface = targetSurface;
+
+      ctx.clearRect(0, 0, width, height);
+
+      drawDitheredWater(surface);
+      const hasVisibleWater = surface < height - floorHeight / pixel;
+      clouds.style.height = `${Math.max(0, surface / height * innerHeight)}px`;
+      surfaceGlint.style.display = hasVisibleWater ? 'block' : 'none';
+      if (hasVisibleWater) {
+        surfaceGlint.style.transform = `translateY(${surface / height * innerHeight}px)`;
+      }
+
+      if (faucetOn && surface < height) {
+        const streamX = width - 16;
+        const streamTop = 13;
+        const streamBottom = Math.max(8, Math.min(height, waveY(streamX, time)));
+        ctx.fillStyle = '#72c9e9';
+        ctx.fillRect(streamX, streamTop, 2, Math.max(0, streamBottom - streamTop));
+        ctx.fillStyle = '#b8ebf8';
+        for (let y = streamTop + 1; y < streamBottom; y += 5) ctx.fillRect(streamX, y, 1, 2);
+      }
+
+      drawBubbles();
+
+      /* 선택박스는 물이 있으면 수면에, 다 빠지면 바닥 윗면에 놓인다. */
+      const boxX = width / 2;
+      const floorTop = height - floorHeight / pixel;
+      const boxHalfWidth = 63;
+      const boxHalfHeight = 18;
+      const hasWater = surface < floorTop - .5;
+      const boxCssX = boxX / width * innerWidth;
+      const boxCssY = hasWater
+        ? waveY(boxX, time) / height * innerHeight - boxHalfHeight
+        : floorTop / height * innerHeight - boxHalfHeight;
+      const activeButton = buttonAt(boxCssX, boxCssY, boxHalfWidth, boxHalfHeight);
+
+      for (const button of buttons) {
+        button.classList.toggle('active', button === activeButton);
+        button.disabled = button !== activeButton;
+      }
+      selector.style.transform = `translate(${boxCssX - boxHalfWidth}px, ${boxCssY - boxHalfHeight}px)`;
+
+      drawLogos();
+
+      if (!still) requestAnimationFrame(draw);
+    }
+
+    addEventListener('resize', resize);
+    addEventListener('pointerdown', dropLogo);
+    addEventListener('wheel', scrollWater, { passive: false });
+    resize();
+    requestAnimationFrame(draw);
+  })();
+</script>
+</body>
+</html>
