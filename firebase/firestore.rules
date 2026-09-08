@@ -1,0 +1,52 @@
+rules_version = '2';
+
+// 느즈러짐 웹사이트 전용 Firestore 규칙.
+//
+// 찰랑 앱(challang-10ab7)과 분리된 프로젝트다. 웹사이트가 앱과 같은
+// 프로젝트를 쓰면 두 가지가 문제였다.
+//   1. 방문자가 페이지를 여는 것만으로 앱 프로젝트의 익명 인증 사용자가 된다.
+//      앱 규칙 상당수가 `request.auth != null` 을 신뢰하므로, 웹 방문자
+//      아무나에게 앱 데이터의 문이 열린다.
+//   2. 웹 트래픽이 앱의 무료 할당량을 먹는다.
+//
+// 데이트맵(/datemap)만은 여전히 찰랑 프로젝트를 쓴다. 앱이 zones 를
+// 실시간으로 읽어 권역을 반영하므로, 같은 DB 를 보는 게 그 기능의 정의다.
+// 여기 규칙은 데이트맵과 무관하다.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 사이트 검색 항목 (main_youngjune.html).
+    // 문서 id 는 encodeURIComponent(검색어).
+    match /siteSearchEntries/{entry} {
+
+      // 읽기는 사이트 콘텐츠라 누구나. 인증을 걸면 익명 로그인이 막힌
+      // 브라우저에서 검색이 통째로 죽는다.
+      allow read: if true;
+
+      // 등록은 페이지의 비밀번호로 막고 있지만 그건 클라이언트 코드라
+      // 규칙 레벨 보호가 아니다. 소스를 보면 그냥 통과할 수 있다.
+      // 그래서 «누가» 쓰는지는 못 막고, 대신 «무엇을» 쓰는지를 조인다.
+      // 아무 문서나 아무 크기로 들어오는 것만은 막는다.
+      allow create, update: if request.auth != null
+                            && isEntry(request.resource.data);
+
+      // 지우는 건 콘솔에서. 페이지에 삭제 기능이 없다.
+      allow delete: if false;
+    }
+
+    function isEntry(d) {
+      return d.keys().hasOnly(['query', 'text', 'updatedAt'])
+             && d.query is string && d.query.size() > 0 && d.query.size() <= 40
+             && d.text is string && d.text.size() > 0 && d.text.size() <= 2000
+             // 클라이언트가 시각을 지어내지 못하게 서버 시각만 받는다
+             && d.updatedAt == request.time;
+    }
+
+    // 나머지는 전부 막는다. 새 컬렉션을 쓸 일이 생기면 여기 위에
+    // 명시적으로 추가한다 — 규칙에 없는 경로가 열려 있는 일은 없어야 한다.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
