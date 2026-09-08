@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>느즈러짐</title>
+<link rel="icon" href="logo.svg">
+<style>
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    width: 100%;
+    min-height: 100%;
+    margin: 0;
+  }
+
+  body {
+    position: relative;
+    min-height: 100svh;
+    background: #fff;
+    color: #000;
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic",
+      -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  .search-area {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(28rem, calc(100vw - 3rem));
+    transform: translate(-50%, -50%);
+    transition: top .65s ease, transform .65s ease;
+  }
+
+  body.has-result .search-area,
+  body.is-registering .search-area {
+    top: calc(50% - 6rem);
+    transform: translate(-50%, -50%);
+  }
+
+  form {
+    width: 100%;
+  }
+
+  input[type="search"] {
+    width: 100%;
+    height: 2.75rem;
+    padding: 0 .9rem;
+    border: 1px solid #000;
+    border-radius: 0;
+    outline: none;
+    background: #fff;
+    color: #000;
+    font: inherit;
+  }
+
+  input[type="search"]:focus {
+    border-width: 2px;
+  }
+
+  .recent {
+    position: absolute;
+    top: calc(100% + .5rem);
+    left: 0;
+    width: 100%;
+    padding: .75rem .9rem;
+    border: 1px solid #000;
+    background: #fff;
+  }
+
+  .recent[hidden] {
+    display: none;
+  }
+
+  .recent-label {
+    margin: 0 0 .45rem;
+    color: #777;
+    font-size: .75rem;
+  }
+
+  .recent button {
+    appearance: none;
+    display: block;
+    width: 100%;
+    padding: .2rem 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .intro {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(28rem, calc(100vw - 3rem));
+    margin: 0;
+    opacity: 0;
+    transform: translate(-50%, .75rem);
+    transition: opacity .4s ease .35s, transform .4s ease .35s;
+    pointer-events: none;
+    white-space: pre-wrap;
+  }
+
+  .intro[hidden] {
+    display: none;
+  }
+
+  body.has-result .intro {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  .intro .keyword {
+    pointer-events: auto;
+  }
+
+  .result-logo {
+    position: absolute;
+    top: 1.5rem;
+    left: 50%;
+    width: 76px;
+    height: auto;
+    transform: translateX(-50%);
+  }
+
+  .result-logo[hidden] {
+    display: none;
+  }
+
+  .keyword {
+    appearance: none;
+    position: relative;
+    display: inline-block;
+    width: auto;
+    margin: 0;
+    padding: 0 .85em 0 .15em;
+    border: 0;
+    background: linear-gradient(#ededed, #ededed) left center / calc(100% - .7em) 100% no-repeat;
+    color: #000;
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+  }
+
+  .recent .keyword {
+    background: linear-gradient(#ededed, #ededed) left center / calc(100% - .7em) 100% no-repeat;
+  }
+
+  .keyword::after {
+    content: '';
+    position: absolute;
+    top: -.28em;
+    right: .16em;
+    width: .4em;
+    height: .4em;
+    border: 1px solid #777;
+    border-radius: 50%;
+  }
+
+  .keyword::before {
+    content: '';
+    position: absolute;
+    top: .18em;
+    right: .02em;
+    width: .3em;
+    height: 1px;
+    background: #777;
+    transform: rotate(45deg);
+    transform-origin: right center;
+  }
+
+  .keyword:hover,
+  .keyword:focus-visible {
+    color: #000;
+    background: linear-gradient(#ddd, #ddd) left center / calc(100% - .7em) 100% no-repeat;
+  }
+
+  .register-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(28rem, calc(100vw - 3rem));
+    transform: translateX(-50%);
+  }
+
+  .register-panel[hidden] {
+    display: none;
+  }
+
+  .register-panel textarea,
+  .register-panel input {
+    display: block;
+    width: 100%;
+    margin: 0 0 .75rem;
+    padding: .7rem .8rem;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: inherit;
+  }
+
+  .register-panel textarea {
+    min-height: 7rem;
+    resize: vertical;
+  }
+
+  .register-panel button {
+    appearance: none;
+    width: 100%;
+    padding: .7rem;
+    border: 1px solid #000;
+    background: #000;
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .register-status {
+    min-height: 1.5em;
+    margin: .6rem 0 0;
+    font-size: .85rem;
+  }
+
+  .people-floor {
+    position: fixed;
+    z-index: 5;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: clamp(7rem, 18vw, 11rem);
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .walker {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: clamp(5.5rem, 13vw, 8.5rem);
+    animation: stroll var(--walk-time) linear var(--walk-delay) infinite alternate;
+    will-change: transform;
+  }
+
+  .walker img {
+    display: block;
+    width: auto;
+    height: 100%;
+    object-fit: contain;
+    animation: toddle .42s ease-in-out infinite alternate;
+    transform-origin: center bottom;
+  }
+
+  @keyframes stroll {
+    from { transform: translateX(-110%); }
+    to { transform: translateX(calc(100vw + 10%)); }
+  }
+
+  @keyframes toddle {
+    from { transform: translateY(0) rotate(-1deg); }
+    to { transform: translateY(-4px) rotate(1deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .walker,
+    .walker img {
+      animation-duration: 1ms;
+      animation-iteration-count: 1;
+    }
+  }
+</style>
+</head>
+<body>
+  <img class="result-logo" src="logo.svg" alt="느즈러짐" hidden>
+
+  <div class="search-area">
+    <form role="search">
+      <input type="search" aria-label="검색" autocomplete="off">
+    </form>
+    <div class="recent" hidden>
+      <p class="recent-label">최근 검색기록</p>
+      <button class="keyword" type="button" data-query="느즈러짐">느즈러짐</button>
+    </div>
+  </div>
+
+  <p class="intro" data-result="느즈러짐"><button class="keyword" type="button" data-query="우리">우리</button>는 느즈러진 태도로 세계를 만듭니다.</p>
+  <p class="intro" data-result="우리" hidden><button class="keyword" type="button" data-query="우리">우리</button>는 민성, 수민, 승욱, 영준, 유현, 이삭입니다.</p>
+  <p class="intro" data-result="민성" hidden><button class="keyword" type="button" data-query="민성">민성</button>입니다~</p>
+  <p class="intro" data-result="수민" hidden><button class="keyword" type="button" data-query="수민">수민</button>입니다~</p>
+  <p class="intro" data-result="승욱" hidden><button class="keyword" type="button" data-query="승욱">승욱</button>입니다~</p>
+  <p class="intro" data-result="영준" hidden><button class="keyword" type="button" data-query="영준">영준</button>입니다~</p>
+  <p class="intro" data-result="유현" hidden><button class="keyword" type="button" data-query="유현">유현</button>입니다~</p>
+  <p class="intro" data-result="이삭" hidden><button class="keyword" type="button" data-query="이삭">이삭</button>입니다~</p>
+  <p class="intro dynamic-result" hidden></p>
+
+  <div class="register-panel" hidden>
+    <textarea aria-label="등록할 본문" placeholder="이 검색어에 표시할 텍스트"></textarea>
+    <input class="register-password" type="password" inputmode="numeric" aria-label="등록 비밀번호" placeholder="비밀번호">
+    <button class="register-button" type="button">등록</button>
+    <p class="register-status" aria-live="polite"></p>
+  </div>
+
+  <div class="people-floor" aria-live="polite"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+
+<script>
+  (() => {
+    const body = document.body;
+    const form = document.querySelector('form');
+    const input = document.querySelector('input[type="search"]');
+    const recent = document.querySelector('.recent');
+    const resultLogo = document.querySelector('.result-logo');
+    const staticResults = [...document.querySelectorAll('.intro[data-result]')];
+    const dynamicResult = document.querySelector('.dynamic-result');
+    const registerPanel = document.querySelector('.register-panel');
+    const registerText = registerPanel.querySelector('textarea');
+    const registerPassword = registerPanel.querySelector('.register-password');
+    const registerButton = registerPanel.querySelector('.register-button');
+    const registerStatus = registerPanel.querySelector('.register-status');
+    const peopleFloor = document.querySelector('.people-floor');
+    const people = {
+      '민성': 'assets/민성.png',
+      '수민': 'assets/수민.png',
+      '승욱': 'assets/승욱.png',
+      '영준': 'assets/영준.png',
+      '유현': 'assets/유현.png',
+      '이삭': 'assets/이삭.png'
+    };
+    const builtInKeywords = new Set(['느즈러짐', '우리', ...Object.keys(people)]);
+    const syncedEntries = new Map();
+    const keywords = new Set(builtInKeywords);
+    const unlockedPeople = [];
+    let database = null;
+    let currentQuery = '';
+    let syncError = '';
+
+    try {
+      resultLogo.hidden = localStorage.getItem('nzrz-logo-unlocked') !== 'true';
+    } catch (error) {
+      resultLogo.hidden = true;
+    }
+
+    function addPerson(name, save = true) {
+      if (!people[name] || unlockedPeople.includes(name)) return;
+      unlockedPeople.push(name);
+
+      const walker = document.createElement('div');
+      const image = document.createElement('img');
+      const order = unlockedPeople.length - 1;
+      walker.className = 'walker';
+      walker.style.setProperty('--walk-time', `${13 + (order % 4) * 2.7}s`);
+      walker.style.setProperty('--walk-delay', `${order * -2.1}s`);
+      walker.style.zIndex = String(order + 1);
+      image.src = people[name];
+      image.alt = `${name} 캐릭터`;
+      walker.append(image);
+      peopleFloor.append(walker);
+
+      if (save) {
+        try {
+          localStorage.setItem('nzrz-people-unlocked', JSON.stringify(unlockedPeople));
+        } catch (error) {
+          /* 저장소를 쓸 수 없어도 현재 방문 중에는 계속 표시한다. */
+        }
+      }
+    }
+
+    try {
+      const savedPeople = JSON.parse(localStorage.getItem('nzrz-people-unlocked') || '[]');
+      if (Array.isArray(savedPeople)) savedPeople.forEach(name => addPerson(name, false));
+    } catch (error) {
+      /* 저장값이 손상된 경우 빈 상태로 시작한다. */
+    }
+
+    function showRecent() {
+      if (!body.classList.contains('has-result') &&
+          !body.classList.contains('is-registering')) {
+        recent.hidden = false;
+      }
+    }
+
+    function escapeRegExp(value) {
+      return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function renderKeywordText(container, text) {
+      container.replaceChildren();
+      const searchableWords = [...keywords]
+        .filter(Boolean)
+        .sort((a, b) => b.length - a.length);
+
+      if (!searchableWords.length) {
+        container.textContent = text;
+        return;
+      }
+
+      const pattern = new RegExp(`(${searchableWords.map(escapeRegExp).join('|')})`, 'g');
+      text.split(pattern).forEach(part => {
+        if (!part) return;
+        if (!keywords.has(part)) {
+          container.append(document.createTextNode(part));
+          return;
+        }
+
+        const keyword = document.createElement('button');
+        keyword.className = 'keyword';
+        keyword.type = 'button';
+        keyword.dataset.query = part;
+        keyword.textContent = part;
+        container.append(keyword);
+      });
+    }
+
+    function hideAllResults() {
+      staticResults.forEach(result => {
+        result.hidden = true;
+      });
+      dynamicResult.hidden = true;
+    }
+
+    function search(rawQuery = input.value, options = {}) {
+      const query = rawQuery.trim();
+      const queryChanged = query !== currentQuery;
+      currentQuery = query;
+      input.value = query;
+      recent.hidden = true;
+      hideAllResults();
+
+      if (query === '느즈러짐') {
+        resultLogo.hidden = false;
+        try {
+          localStorage.setItem('nzrz-logo-unlocked', 'true');
+        } catch (error) {
+          /* 저장소를 쓸 수 없어도 현재 방문 중에는 계속 표시한다. */
+        }
+      }
+
+      if (people[query]) addPerson(query);
+
+      const staticResult = staticResults.find(result => result.dataset.result === query);
+      const syncedText = syncedEntries.get(query);
+      const hasResult = Boolean(staticResult || syncedText !== undefined);
+
+      body.classList.toggle('has-result', hasResult);
+      body.classList.toggle('is-registering', Boolean(query) && !hasResult);
+      registerPanel.hidden = !query || hasResult;
+
+      if (staticResult) {
+        staticResult.hidden = false;
+      } else if (syncedText !== undefined) {
+        renderKeywordText(dynamicResult, syncedText);
+        dynamicResult.hidden = false;
+      }
+
+      if (!registerPanel.hidden) {
+        if (queryChanged && !options.preserveForm) {
+          registerText.value = '';
+          registerPassword.value = '';
+        }
+        registerStatus.textContent = syncError;
+      } else {
+        registerStatus.textContent = '';
+      }
+    }
+
+    input.addEventListener('focus', showRecent);
+
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      search();
+    });
+
+    document.addEventListener('click', event => {
+      const keyword = event.target.closest('.keyword');
+      if (keyword) {
+        search(keyword.dataset.query || '');
+        input.focus();
+      }
+    });
+
+    registerButton.addEventListener('click', async () => {
+      const query = currentQuery;
+      const text = registerText.value.trim();
+
+      if (registerPassword.value !== '486') {
+        registerStatus.textContent = '비밀번호가 맞지 않습니다.';
+        registerPassword.focus();
+        return;
+      }
+      if (!text) {
+        registerStatus.textContent = '표시할 텍스트를 입력해주세요.';
+        registerText.focus();
+        return;
+      }
+      if (!query || query.length > 80 || text.length > 1000) {
+        registerStatus.textContent = '검색어는 80자, 본문은 1,000자 이내로 입력해주세요.';
+        return;
+      }
+      if (!database) {
+        registerStatus.textContent = syncError || '동기화 연결 중입니다. 잠시 후 다시 눌러주세요.';
+        return;
+      }
+
+      registerButton.disabled = true;
+      registerStatus.textContent = '등록 중…';
+      try {
+        await database.collection('siteSearchEntries').doc(encodeURIComponent(query)).set({
+          query,
+          text,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        syncedEntries.set(query, text);
+        keywords.add(query);
+        search(query);
+      } catch (error) {
+        console.error(error);
+        registerStatus.textContent = '등록하지 못했습니다. 연결 또는 데이터베이스 권한을 확인해주세요.';
+      } finally {
+        registerButton.disabled = false;
+      }
+    });
+
+    registerPassword.addEventListener('keydown', event => {
+      if (event.key === 'Enter') registerButton.click();
+    });
+
+    document.addEventListener('pointerdown', event => {
+      if (!event.target.closest('.search-area')) recent.hidden = true;
+    });
+
+    async function connectSearchSync() {
+      try {
+        if (typeof firebase === 'undefined') {
+          throw new Error('Firebase scripts were not loaded.');
+        }
+
+        const config = {
+          apiKey: 'AIzaSyAKduk9_kBpXWUwdeYbVqp3hpbqlLPXeqE',
+          authDomain: 'challang-10ab7.firebaseapp.com',
+          projectId: 'challang-10ab7',
+          storageBucket: 'challang-10ab7.firebasestorage.app',
+          messagingSenderId: '127707099717',
+          appId: '1:127707099717:web:1d2cbcd966ad658c82292c'
+        };
+        const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(config);
+        const auth = app.auth();
+        database = app.firestore();
+
+        await auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
+        if (!auth.currentUser) await auth.signInAnonymously();
+
+        database.collection('siteSearchEntries').onSnapshot(snapshot => {
+          syncedEntries.clear();
+          keywords.clear();
+          builtInKeywords.forEach(keyword => keywords.add(keyword));
+
+          snapshot.forEach(documentSnapshot => {
+            const entry = documentSnapshot.data();
+            if (typeof entry.query !== 'string' || typeof entry.text !== 'string') return;
+            const query = entry.query.trim();
+            const text = entry.text.trim();
+            if (!query || !text || builtInKeywords.has(query)) return;
+            syncedEntries.set(query, text);
+            keywords.add(query);
+          });
+
+          syncError = '';
+          if (currentQuery) search(currentQuery, { preserveForm: true });
+        }, error => {
+          console.error(error);
+          database = null;
+          syncError = '동기화에 연결하지 못했습니다.';
+          if (!registerPanel.hidden) registerStatus.textContent = syncError;
+        });
+      } catch (error) {
+        console.error(error);
+        database = null;
+        syncError = '동기화에 연결하지 못했습니다.';
+        if (!registerPanel.hidden) registerStatus.textContent = syncError;
+      }
+    }
+
+    connectSearchSync();
+  })();
+</script>
+</body>
+</html>
