@@ -36,9 +36,13 @@ service cloud.firestore {
     }
 
     function isEntry(d) {
-      return d.keys().hasOnly(['query', 'text', 'updatedAt'])
+      return d.keys().hasOnly(['query', 'text', 'updatedAt', 'imageUrl', 'imagePath'])
              && d.query is string && d.query.size() > 0 && d.query.size() <= 40
              && d.text is string && d.text.size() > 0 && d.text.size() <= 2000
+             && (!d.keys().hasAny(['imageUrl'])
+                 || (d.imageUrl is string && d.imageUrl.size() <= 2048))
+             && (!d.keys().hasAny(['imagePath'])
+                 || (d.imagePath is string && d.imagePath.size() <= 512))
              // 클라이언트가 시각을 지어내지 못하게 서버 시각만 받는다
              && d.updatedAt == request.time;
     }

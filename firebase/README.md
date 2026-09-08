@@ -23,9 +23,10 @@
 2. 빌드 → Firestore Database → 데이터베이스 만들기.
    위치는 `asia-northeast3`(서울). **프로덕션 모드**로 시작한다 —
    테스트 모드는 30일 뒤 전부 잠기고, 그 전까지는 전부 열려 있다.
-3. 빌드 → Authentication → 시작하기 → 익명(Anonymous) 사용 설정.
+3. 빌드 → Storage → 시작하기. 검색 본문에 붙는 이미지를 여기에 저장한다.
+4. 빌드 → Authentication → 시작하기 → 익명(Anonymous) 사용 설정.
    등록 기능이 익명 로그인을 쓴다.
-4. 프로젝트 설정 → 내 앱 → 웹 앱 추가(`</>`). 나오는 `firebaseConfig`
+5. 프로젝트 설정 → 내 앱 → 웹 앱 추가(`</>`). 나오는 `firebaseConfig`
    여섯 줄을 복사해 둔다.
 
 ## 규칙 올리기
@@ -34,7 +35,7 @@
 cd firebase
 npx firebase login          # 처음 한 번
 npx firebase use --add      # 위에서 만든 프로젝트 선택, 별칭은 default
-npx firebase deploy --only firestore:rules
+npx firebase deploy --only firestore:rules,storage
 ```
 
 콘솔의 규칙 탭에 붙여넣어도 되지만, 그러면 이 파일과 실제 규칙이
@@ -52,7 +53,8 @@ npx firebase deploy --only firestore:rules
 
 | 경로 | 읽기 | 쓰기 |
 |---|---|---|
-| `siteSearchEntries/{id}` | 누구나 | 익명 로그인 + 형식 검사(키 3개, 길이 제한, 서버 시각) |
+| `siteSearchEntries/{id}` | 누구나 | 익명 로그인 + 본문·이미지 정보 형식 검사 |
+| `search-entry-images/{검색어}/{파일}` | 누구나 | 익명 로그인 + 이미지 형식 + 5MB 제한 |
 | 그 외 전부 | 막힘 | 막힘 |
 
 등록 비밀번호는 페이지 안의 클라이언트 코드라 규칙 레벨 보호가 아니다.
