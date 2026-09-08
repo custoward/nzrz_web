@@ -24,6 +24,8 @@
     color: #000;
     font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic",
       -apple-system, BlinkMacSystemFont, sans-serif;
+    transition: background-color .35s ease;
+    transition: background-color .4s ease;
   }
 
   .search-area {
@@ -39,6 +41,10 @@
   body.is-registering .search-area {
     top: calc(50% - 6rem);
     transform: translate(-50%, -50%);
+  }
+
+  body.has-index .search-area {
+    top: calc(50svh - 6rem);
   }
 
   form {
@@ -119,6 +125,51 @@
     pointer-events: auto;
   }
 
+  .edit-result {
+    appearance: none;
+    margin: 0 0 0 .7rem;
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid #aaa;
+    background: transparent;
+    color: #999;
+    font: inherit;
+    font-size: .72rem;
+    line-height: 1.2;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  .edit-result:hover,
+  .edit-result:focus-visible {
+    color: #555;
+    border-bottom-color: #555;
+  }
+
+  .back-button {
+    appearance: none;
+    position: absolute;
+    z-index: 4;
+    top: 50%;
+    left: calc(50% - min(14rem, calc(50vw - 1.5rem)) - .9rem);
+    padding: .25rem;
+    border: 0;
+    background: transparent;
+    color: #999;
+    font: 1.5rem/1 sans-serif;
+    cursor: pointer;
+    transform: translate(-100%, -.1rem);
+  }
+
+  .back-button:hover,
+  .back-button:focus-visible {
+    color: #666;
+  }
+
+  .back-button[hidden] {
+    display: none;
+  }
+
   .result-logo {
     position: absolute;
     top: 1.5rem;
@@ -188,6 +239,10 @@
     transform: translateX(-50%);
   }
 
+  body.is-editing .register-panel {
+    top: calc(50% + 3.25rem);
+  }
+
   .register-panel[hidden] {
     display: none;
   }
@@ -225,6 +280,28 @@
     min-height: 1.5em;
     margin: .6rem 0 0;
     font-size: .85rem;
+  }
+
+  .keyword-index {
+    position: absolute;
+    top: 50svh;
+    left: 50%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.35rem 1rem;
+    width: min(42rem, calc(100vw - 3rem));
+    padding: 0 0 50svh;
+    transform: translateX(-50%);
+  }
+
+  .keyword-index[hidden] {
+    display: none;
+  }
+
+  .keyword-index .keyword {
+    justify-self: start;
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 
   .people-floor {
@@ -273,6 +350,14 @@
       animation-iteration-count: 1;
     }
   }
+
+  @media (max-width: 42rem) {
+    .back-button {
+      top: calc(50% - 2.5rem);
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+  }
 </style>
 </head>
 <body>
@@ -296,7 +381,12 @@
   <p class="intro" data-result="영준" hidden><button class="keyword" type="button" data-query="영준">영준</button>입니다~</p>
   <p class="intro" data-result="유현" hidden><button class="keyword" type="button" data-query="유현">유현</button>입니다~</p>
   <p class="intro" data-result="이삭" hidden><button class="keyword" type="button" data-query="이삭">이삭</button>입니다~</p>
+  <p class="intro" data-result="뒤로가기" hidden>인생에도 뒤로가기가 있으면 얼마나 좋을까요</p>
   <p class="intro dynamic-result" hidden></p>
+
+  <button class="back-button" type="button" aria-label="뒤로가기" hidden>←</button>
+
+  <div class="keyword-index" hidden></div>
 
   <div class="register-panel" hidden>
     <textarea aria-label="등록할 본문" placeholder="이 검색어에 표시할 텍스트"></textarea>
@@ -318,8 +408,14 @@
     const input = document.querySelector('input[type="search"]');
     const recent = document.querySelector('.recent');
     const resultLogo = document.querySelector('.result-logo');
+    const backButton = document.querySelector('.back-button');
     const staticResults = [...document.querySelectorAll('.intro[data-result]')];
+    const defaultEntries = new Map(staticResults.map(result => [
+      result.dataset.result,
+      result.textContent.trim()
+    ]));
     const dynamicResult = document.querySelector('.dynamic-result');
+    const keywordIndex = document.querySelector('.keyword-index');
     const registerPanel = document.querySelector('.register-panel');
     const registerText = registerPanel.querySelector('textarea');
     const registerPassword = registerPanel.querySelector('.register-password');
@@ -334,18 +430,53 @@
       '유현': 'assets/유현.png',
       '이삭': 'assets/이삭.png'
     };
-    const builtInKeywords = new Set(['느즈러짐', '우리', ...Object.keys(people)]);
+    const builtInKeywords = new Set([
+      '느즈러짐', '우리', ...Object.keys(people), '초기화', '뒤로가기', '검색어'
+    ]);
     const syncedEntries = new Map();
     const keywords = new Set(builtInKeywords);
     const unlockedPeople = [];
     let database = null;
     let currentQuery = '';
+    let previousQuery = '';
+    let backUnlocked = false;
     let syncError = '';
+
+    function normalizeSearchColor(value) {
+      const color = value.trim().toLowerCase();
+      const isHex = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color);
+      if (isHex) return color;
+      if (!/^[a-z]+$/i.test(color) || color === 'transparent' || color === 'currentcolor') {
+        return '';
+      }
+
+      const probe = document.createElement('span').style;
+      probe.color = '';
+      probe.color = color;
+      return probe.color ? color : '';
+    }
+
+    function applyBackgroundColor(color, save = true) {
+      body.style.backgroundColor = color;
+      if (!save) return;
+      try {
+        localStorage.setItem('nzrz-background-color', color);
+      } catch (error) {
+        /* 저장소를 쓸 수 없어도 현재 방문 중에는 색상을 유지한다. */
+      }
+    }
 
     try {
       resultLogo.hidden = localStorage.getItem('nzrz-logo-unlocked') !== 'true';
+      backUnlocked = localStorage.getItem('nzrz-back-unlocked') === 'true';
+      backButton.hidden = true;
+      const savedBackground = normalizeSearchColor(
+        localStorage.getItem('nzrz-background-color') || ''
+      );
+      if (savedBackground) applyBackgroundColor(savedBackground, false);
     } catch (error) {
       resultLogo.hidden = true;
+      backButton.hidden = true;
     }
 
     function addPerson(name, save = true) {
@@ -417,6 +548,13 @@
         keyword.textContent = part;
         container.append(keyword);
       });
+
+      const editButton = document.createElement('button');
+      editButton.className = 'edit-result';
+      editButton.type = 'button';
+      editButton.textContent = '편집';
+      editButton.setAttribute('aria-label', `${currentQuery} 본문 편집`);
+      container.append(editButton);
     }
 
     function hideAllResults() {
@@ -424,15 +562,101 @@
         result.hidden = true;
       });
       dynamicResult.hidden = true;
+      keywordIndex.hidden = true;
+      body.classList.remove('has-index');
+    }
+
+    function renderKeywordIndex() {
+      keywordIndex.replaceChildren();
+      [...keywords]
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'ko'))
+        .forEach(query => {
+          const keyword = document.createElement('button');
+          keyword.className = 'keyword';
+          keyword.type = 'button';
+          keyword.dataset.query = query;
+          keyword.textContent = query;
+          keywordIndex.append(keyword);
+        });
+      keywordIndex.hidden = false;
+      body.classList.add('has-index');
+    }
+
+    function colorFromQuery(query) {
+      const compactHex = query.match(/^#?([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+      if (compactHex) return `#${compactHex[1]}`;
+
+      if (!/^[a-z]+$/i.test(query)) return '';
+      const colorProbe = document.createElement('span').style;
+      colorProbe.color = '';
+      colorProbe.color = query;
+      return colorProbe.color ? query : '';
+    }
+
+    function applyBackgroundFromQuery(query) {
+      body.style.backgroundColor = colorFromQuery(query) || '#fff';
+    }
+
+    function resetToInitialState() {
+      currentQuery = '';
+      previousQuery = '';
+      input.value = '';
+      recent.hidden = true;
+      hideAllResults();
+      registerPanel.hidden = true;
+      backButton.hidden = true;
+      backUnlocked = false;
+      resultLogo.hidden = true;
+      peopleFloor.replaceChildren();
+      unlockedPeople.splice(0, unlockedPeople.length);
+      body.classList.remove('has-result', 'is-registering', 'is-editing', 'has-index');
+      body.style.backgroundColor = '#fff';
+      body.style.removeProperty('background-color');
+      try {
+        localStorage.removeItem('nzrz-logo-unlocked');
+        localStorage.removeItem('nzrz-people-unlocked');
+        localStorage.removeItem('nzrz-back-unlocked');
+        localStorage.removeItem('nzrz-background-color');
+      } catch (error) {
+        /* 저장소를 쓸 수 없어도 현재 화면은 초기화한다. */
+      }
     }
 
     function search(rawQuery = input.value, options = {}) {
       const query = rawQuery.trim();
+      if (query === '초기화') {
+        resetToInitialState();
+        return;
+      }
+
       const queryChanged = query !== currentQuery;
+      if (queryChanged && options.recordHistory !== false) previousQuery = currentQuery;
       currentQuery = query;
       input.value = query;
       recent.hidden = true;
+      applyBackgroundFromQuery(query);
+      body.classList.remove('is-editing');
+      registerButton.textContent = '등록';
       hideAllResults();
+
+      if (query === '뒤로가기') {
+        backUnlocked = true;
+        try {
+          localStorage.setItem('nzrz-back-unlocked', 'true');
+        } catch (error) {
+          /* 저장소를 쓸 수 없어도 현재 방문 중에는 계속 표시한다. */
+        }
+      }
+      backButton.hidden = !backUnlocked || !query;
+
+      const searchedColor = normalizeSearchColor(query);
+      if (searchedColor) {
+        applyBackgroundColor(searchedColor);
+        body.classList.remove('has-result', 'is-registering');
+        registerPanel.hidden = true;
+        return;
+      }
 
       if (query === '느즈러짐') {
         resultLogo.hidden = false;
@@ -447,17 +671,21 @@
 
       const staticResult = staticResults.find(result => result.dataset.result === query);
       const syncedText = syncedEntries.get(query);
-      const hasResult = Boolean(staticResult || syncedText !== undefined);
+      const isKeywordIndex = query === '검색어';
+      const hasResult = Boolean(staticResult || syncedText !== undefined || isKeywordIndex);
 
       body.classList.toggle('has-result', hasResult);
       body.classList.toggle('is-registering', Boolean(query) && !hasResult);
       registerPanel.hidden = !query || hasResult;
 
-      if (staticResult) {
-        staticResult.hidden = false;
+      if (isKeywordIndex) {
+        renderKeywordIndex();
       } else if (syncedText !== undefined) {
         renderKeywordText(dynamicResult, syncedText);
         dynamicResult.hidden = false;
+      } else if (staticResult) {
+        renderKeywordText(staticResult, defaultEntries.get(query) || '');
+        staticResult.hidden = false;
       }
 
       if (!registerPanel.hidden) {
@@ -478,11 +706,32 @@
       search();
     });
 
+    backButton.addEventListener('click', () => {
+      const destination = previousQuery;
+      previousQuery = '';
+      search(destination, { recordHistory: false });
+      input.focus();
+    });
+
     document.addEventListener('click', event => {
+      const editButton = event.target.closest('.edit-result');
+      if (editButton) {
+        const text = syncedEntries.get(currentQuery) ?? defaultEntries.get(currentQuery) ?? '';
+        body.classList.add('is-editing');
+        registerPanel.hidden = false;
+        registerText.value = text;
+        registerPassword.value = '';
+        registerButton.textContent = '수정';
+        registerStatus.textContent = syncError;
+        registerText.focus();
+        return;
+      }
+
       const keyword = event.target.closest('.keyword');
       if (keyword) {
-        search(keyword.dataset.query || '');
-        input.focus();
+        const query = keyword.dataset.query || '';
+        search(query);
+        if (query !== '초기화') input.focus();
       }
     });
 
@@ -536,6 +785,23 @@
       if (!event.target.closest('.search-area')) recent.hidden = true;
     });
 
+    function describeSyncError(error) {
+      const code = error && error.code ? error.code : '';
+      if (code.includes('operation-not-allowed')) {
+        return '동기화 실패: Firebase Authentication에서 익명 로그인을 켜주세요.';
+      }
+      if (code.includes('unauthorized-domain')) {
+        return '동기화 실패: Firebase 승인 도메인에서 현재 주소를 허용해주세요.';
+      }
+      if (code.includes('permission-denied')) {
+        return '동기화 실패: Firestore 규칙에서 siteSearchEntries 읽기·쓰기를 허용해주세요.';
+      }
+      if (code.includes('failed-precondition')) {
+        return '동기화 실패: Firebase에서 Firestore 데이터베이스를 먼저 생성해주세요.';
+      }
+      return `동기화 실패${code ? ` (${code})` : ''}: 연결 상태를 확인해주세요.`;
+    }
+
     async function connectSearchSync() {
       try {
         if (typeof firebase === 'undefined') {
@@ -574,23 +840,25 @@
             if (typeof entry.query !== 'string' || typeof entry.text !== 'string') return;
             const query = entry.query.trim();
             const text = entry.text.trim();
-            if (!query || !text || builtInKeywords.has(query)) return;
+            if (!query || !text) return;
             syncedEntries.set(query, text);
             keywords.add(query);
           });
 
           syncError = '';
-          if (currentQuery) search(currentQuery, { preserveForm: true });
+          if (currentQuery && !body.classList.contains('is-editing')) {
+            search(currentQuery, { preserveForm: true });
+          }
         }, error => {
           console.error(error);
           database = null;
-          syncError = '동기화에 연결하지 못했습니다.';
+          syncError = describeSyncError(error);
           if (!registerPanel.hidden) registerStatus.textContent = syncError;
         });
       } catch (error) {
         console.error(error);
         database = null;
-        syncError = '동기화에 연결하지 못했습니다.';
+        syncError = describeSyncError(error);
         if (!registerPanel.hidden) registerStatus.textContent = syncError;
       }
     }
