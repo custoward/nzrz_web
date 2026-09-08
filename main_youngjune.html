@@ -542,13 +542,20 @@
           throw new Error('Firebase scripts were not loaded.');
         }
 
+        // 느즈러짐 웹 전용 프로젝트. 찰랑 앱(challang-10ab7)과 분리돼 있다.
+        // 같은 프로젝트를 쓰면 이 페이지를 여는 것만으로 방문자가 찰랑의
+        // 익명 인증 사용자가 되고, 찰랑 규칙의 zones 는 인증만 되면 쓰기를
+        // 허용해서 데이트맵 권역을 아무나 덮어쓸 수 있었다.
+        // 규칙은 firebase/firestore.rules 에 있다.
+        //
+        // apiKey 는 비밀이 아니다 — 공개돼도 되는 식별자이고 보안은 규칙이 한다.
         const config = {
-          apiKey: 'AIzaSyAKduk9_kBpXWUwdeYbVqp3hpbqlLPXeqE',
-          authDomain: 'challang-10ab7.firebaseapp.com',
-          projectId: 'challang-10ab7',
-          storageBucket: 'challang-10ab7.firebasestorage.app',
-          messagingSenderId: '127707099717',
-          appId: '1:127707099717:web:1d2cbcd966ad658c82292c'
+          apiKey: 'AIzaSyAlWu9tGBP1ommZxjpREIks8qEQPSLs1Ko',
+          authDomain: 'nzrz-web.firebaseapp.com',
+          projectId: 'nzrz-web',
+          storageBucket: 'nzrz-web.firebasestorage.app',
+          messagingSenderId: '7719499015',
+          appId: '1:7719499015:web:a7ae355772c78e23ee81a2'
         };
         const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(config);
         const auth = app.auth();
